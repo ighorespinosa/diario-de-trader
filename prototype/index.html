@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diário de Trade</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Sora:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo-block">
+      <div class="logo-mark">R</div>
+      <div>
+        <h1>Diário <span class="thin">de</span> Trade</h1>
+        <p class="sub">Cripto &amp; Forex · capital, operações e performance</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="session-badge mono" id="sessionBadge">Carregando...</div>
+      <button class="gear-btn" id="openSettingsBtn" title="Ajustar horário e localização" aria-label="Ajustar horário e localização">⚙</button>
+    </div>
+  </header>
+
+  <!-- Modal de configuração de horário/localização (fechado por padrão) -->
+  <div class="modal-overlay" id="settingsOverlay">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>Horário e localização</h3>
+        <button class="modal-close" id="closeSettingsBtn" aria-label="Fechar">✕</button>
+      </div>
+      <p class="modal-desc">Usado para calcular corretamente as killzones de mercado no seu fuso horário.</p>
+      <div class="modal-grid">
+        <div class="f">
+          <label>Cidade</label>
+          <input type="text" id="locCity" placeholder="Ex: Campo Grande">
+        </div>
+        <div class="f">
+          <label>Estado</label>
+          <input type="text" id="locState" placeholder="Ex: MS">
+        </div>
+        <div class="f">
+          <label>País</label>
+          <input type="text" id="locCountry" placeholder="Ex: Brasil">
+        </div>
+        <div class="f">
+          <label>Fuso horário</label>
+          <select id="locOffset"></select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn sec" id="cancelSettingsBtn">Cancelar</button>
+        <button class="btn" id="saveLocationBtn">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Régua de killzones ICT — baseada na localização configurada no ícone ⚙ -->
+  <div class="kz-panel">
+    <div class="kz-top">
+      <span class="kz-top-label" id="kzTopLabel">Sessões de mercado</span>
+      <span class="kz-now-label" id="kzNowLabel"></span>
+    </div>
+    <div class="kz-rail">
+      <div class="kz-track" id="kzTrack"></div>
+      <div class="kz-needle" id="kzNeedle" style="left:0%"></div>
+    </div>
+    <div class="kz-hours">
+      <span>00h</span><span>04h</span><span>08h</span><span>12h</span><span>16h</span><span>20h</span><span>24h</span>
+    </div>
+  </div>
+
+  <!-- Painel de capital -->
+  <div class="cp">
+    <div class="f" style="max-width:160px;">
+      <label>Mês</label>
+      <input type="month" id="capMonth">
+    </div>
+    <div class="f">
+      <label>Capital inicial</label>
+      <input type="number" step="any" id="capitalInicial" placeholder="Ex: 10000">
+    </div>
+    <div class="f" style="max-width:110px;">
+      <label>Moeda</label>
+      <select id="moeda"><option value="BRL">R$</option><option value="USD">US$</option></select>
+    </div>
+    <button class="btn sec" id="saveCapitalBtn" style="height:38px;align-self:flex-end;">Salvar capital</button>
+    <div class="readout">
+      <div class="ri"><div class="rl">Capital atual</div><div class="rv mono" id="capitalAtual">—</div></div>
+      <div class="ri"><div class="rl">Variação total</div><div class="rv mono" id="variacaoTotal">—</div></div>
+    </div>
+  </div>
+
+  <!-- Filtros -->
+  <div class="cp">
+    <div class="f" style="max-width:180px;">
+      <label>Mercado</label>
+      <select id="filterMarket">
+        <option value="Todos">Todos os mercados</option>
+        <option value="Cripto">Cripto</option>
+        <option value="Forex">Forex</option>
+      </select>
+    </div>
+    <div class="f" style="max-width:220px;">
+      <label>Mês</label>
+      <select id="filterMonth">
+        <option value="all">Todos os meses (somado)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid" id="statsGrid"></div>
+
+  <!-- Fita de operações -->
+  <div class="tape" id="tape"></div>
+
+  <!-- Resultados -->
+  <div class="panel">
+    <div class="toolbar">
+      <h2 class="panel-h" id="resultsHeading" style="margin:0;">Resultados mensais</h2>
+      <button class="btn sec" id="printReportBtn">🖨️ Imprimir relatório do mês</button>
+    </div>
+    <div id="monthlyWrap"></div>
+  </div>
+
+  <div id="printReport"></div>
+
+  <!-- Gráfico -->
+  <div class="panel">
+    <h2 class="panel-h">Evolução do capital</h2>
+    <div class="chart-wrap"><canvas id="equityChart"></canvas></div>
+  </div>
+
+  <!-- Operações + formulário -->
+  <div class="panel">
+    <div class="toolbar">
+      <h2 class="panel-h" style="margin:0;">Operações</h2>
+      <button class="btn" id="toggleFormBtn">+ Nova operação</button>
+    </div>
+
+    <!-- Formulário colapsável -->
+    <form class="trade-form" id="tradeForm" autocomplete="off">
+
+      <!-- Banner de edição (CSS próprio, sem conflito com .ff) -->
+      <div class="edit-banner" id="editBanner">
+        <span>Editando operação existente — salve para atualizar ou cancele para descartar.</span>
+      </div>
+
+      <div class="ff"><label>Data</label><input type="date" id="f_date" required></div>
+      <div class="ff"><label>Hora</label><input type="time" id="f_time"></div>
+      <div class="ff"><label>Mercado</label>
+        <select id="f_market"><option value="Cripto">Cripto</option><option value="Forex">Forex</option></select>
+      </div>
+      <div class="ff"><label>Par / Ativo</label><input type="text" id="f_pair" placeholder="BTCUSDT, EURUSD..." required></div>
+
+      <div class="ff"><label>Direção</label>
+        <select id="f_direction"><option value="Compra">Compra</option><option value="Venda">Venda</option></select>
+      </div>
+
+      <div class="ff s2">
+        <label>Setup (confluências)</label>
+        <div class="chip-group" id="setupChips">
+          <span class="chip" data-v="Captura de Liquidez">Captura de Liquidez</span>
+          <span class="chip" data-v="OB +">OB +</span>
+          <span class="chip" data-v="OB -">OB -</span>
+          <span class="chip" data-v="IDM">IDM</span>
+        </div>
+      </div>
+
+      <div class="ff"><label>Time frame macro</label>
+        <select id="f_tf_macro">
+          <option value="">Selecione</option>
+          <option value="H1">H1</option><option value="M30">M30</option>
+          <option value="M15">M15</option><option value="M5">M5</option>
+        </select>
+      </div>
+      <div class="ff"><label>Time frame micro (gatilho)</label>
+        <select id="f_tf_gatilho">
+          <option value="">Selecione</option>
+          <option value="M5">M5</option><option value="M3">M3</option>
+          <option value="M2">M2</option><option value="M1">M1</option>
+        </select>
+      </div>
+
+      <div class="ff"><label>Preço de entrada</label><input type="number" step="any" id="f_entry" required></div>
+      <div class="ff"><label>Preço de stop</label><input type="number" step="any" id="f_stop_price" required></div>
+      <div class="ff"><label>Preço de saída</label><input type="number" step="any" id="f_exit" required></div>
+
+      <div class="ff s2">
+        <label>Valor de entrada (R$/US$ investido)</label>
+        <input type="number" step="any" id="f_valor_entrada" placeholder="Ex: 500" required>
+      </div>
+      <div class="ff s2">
+        <label>Valor de ganho — calculado automaticamente</label>
+        <input type="number" step="any" id="f_valor_ganho" placeholder="Preencha os preços acima" required>
+      </div>
+
+      <div class="ff s4">
+        <label>Observações</label>
+        <textarea id="f_notes" rows="2" placeholder="O que funcionou, o que corrigir na próxima..."></textarea>
+      </div>
+      <div class="s4 hint" id="previewLine"></div>
+
+      <div class="form-actions">
+        <button type="button" class="btn sec" id="cancelFormBtn">Cancelar</button>
+        <button type="submit" class="btn" id="submitBtn">Salvar operação</button>
+      </div>
+    </form>
+
+    <div id="tableWrap"></div>
+  </div>
+
+  <footer>DIÁRIO DE TRADE · cálculo por múltiplo de risco (R) · capital mês a mês</footer>
+</div>
+
+<script src="js/storage.js"></script>
+<script src="js/state.js"></script>
+<script src="js/data.js"></script>
+<script src="js/killzone.js"></script>
+<script src="js/calculations.js"></script>
+<script src="js/filters.js"></script>
+<script src="js/render.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/capital-panel.js"></script>
+<script src="js/form.js"></script>
+<script src="js/print.js"></script>
+<script src="js/init.js"></script>
+</body>
+</html>
