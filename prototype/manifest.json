@@ -1,0 +1,14 @@
+{
+  "name": "Diário de Trade",
+  "short_name": "Diário",
+  "description": "Diário de trade para operações de Cripto e Forex — capital por mês, cálculo por múltiplo de risco (R), killzones de mercado.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#05060C",
+  "theme_color": "#05060C",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

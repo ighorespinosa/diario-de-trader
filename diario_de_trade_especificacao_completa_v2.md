@@ -18,6 +18,7 @@ Diário de trade para operações de **Cripto** e **Forex**, com:
 - Geração de **relatório de impressão/PDF mês a mês** (nunca todos os meses juntos).
 - Indicador de sessão de mercado (killzone ICT) com **régua visual de 24h**, calculado por aritmética pura de UTC a partir de um **fuso horário configurável pelo usuário** (cidade, estado, país, offset UTC), ajustável através de um ícone de engrenagem (⚙) que abre um modal — não fica exposto permanentemente na tela.
 - Persistência de dados via API de armazenamento chave-valor (equivalente a um banco local por usuário), com fallback automático para `localStorage` do navegador quando essa API não está disponível.
+- Instalável como **PWA** (ícone próprio, janela sem barra de navegador, uso offline) quando servido por HTTPS ou `http://localhost` — via `manifest.json` + service worker (`sw.js`). Abrindo o `index.html` direto por `file://`, o app funciona normalmente, só não fica instalável.
 
 Idioma da interface: **Português (pt-BR)**, formatação de moeda `Intl.NumberFormat('pt-BR', {style:'currency', currency: 'BRL'|'USD'})`.
 
@@ -541,7 +542,9 @@ Qualquer reimplementação nativa deve buscar cobertura equivalente antes de ser
 
 Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em que este documento se baseia — na versão atual (v2), já com o design futurista, o adaptador de storage com fallback, o modal de configuração de horário/localização, e o cálculo de killzone por aritmética de UTC. Use como referência de última instância para qualquer dúvida sobre comportamento, nome de campo, id de elemento ou fórmula — tudo o que está descrito nas seções anteriores foi extraído diretamente deste código, e este código passa integralmente pela suíte de 64 testes automatizados referenciada na seção 11.
 
-**A partir desta revisão, o protótipo vive extraído em arquivos separados no diretório `prototype/`** (HTML + CSS + 12 módulos JS por responsabilidade), em vez de um único bloco monolítico. Os blocos abaixo são cópia literal, arquivo por arquivo, do conteúdo em `prototype/` — continuam sendo a fonte de última instância, só que organizados. A ordem das 12 tags `<script>` no `index.html` é a mesma ordem de execução que o script único tinha antes da divisão; não reordene os módulos ao portar isso para outra plataforma sem reler a seção 4.8 (a chamada imediata de `updateSession()` dentro de `killzone.js` depende de rodar antes de `loadAll()`, chamado só em `init.js`).
+**O protótipo vive extraído em arquivos separados no diretório `prototype/`** (HTML + CSS + 12 módulos JS por responsabilidade), em vez de um único bloco monolítico. Os blocos abaixo são cópia literal, arquivo por arquivo, do conteúdo em `prototype/` — continuam sendo a fonte de última instância, só que organizados. A ordem das 12 tags `<script>` de lógica de app no `index.html` é a mesma ordem de execução que o script único tinha antes da divisão; não reordene os módulos ao portar isso para outra plataforma sem reler a seção 4.8 (a chamada imediata de `updateSession()` dentro de `killzone.js` depende de rodar antes de `loadAll()`, chamado só em `init.js`).
+
+**PWA (instalável) — adicionado nesta revisão:** `manifest.json`, `icon.svg` e `sw.js` (service worker, cache-first com atualização em segundo plano) tornam o protótipo instalável como app (ícone, janela própria, uso offline) quando servido por **HTTPS ou `http://localhost`**. `js/register-sw.js` registra o service worker e é a última tag `<script>` do `index.html` — carrega depois de `init.js` de propósito, já que o registro do service worker não tem nenhuma dependência do estado do app. **Em `file://` (duplo clique no `index.html`) o navegador não expõe `navigator.serviceWorker`, então o registro vira um no-op silencioso** — o app continua funcionando normalmente, só não fica instalável nesse modo.
 
 ### `prototype/index.html`
 
@@ -556,6 +559,13 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Sora:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="theme-color" content="#05060C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Diário de Trade">
 </head>
 <body>
 <div class="wrap">
@@ -778,6 +788,7 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
 <script src="js/form.js"></script>
 <script src="js/print.js"></script>
 <script src="js/init.js"></script>
+<script src="js/register-sw.js"></script>
 </body>
 </html>
 ```
@@ -1071,6 +1082,101 @@ footer{margin-top:26px;text-align:center;color:var(--dim);font-size:11px;letter-
   .session-badge{text-align:left;min-width:0;width:100%;}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;}}
+```
+
+### `prototype/manifest.json`
+
+```json
+{
+  "name": "Diário de Trade",
+  "short_name": "Diário",
+  "description": "Diário de trade para operações de Cripto e Forex — capital por mês, cálculo por múltiplo de risco (R), killzones de mercado.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#05060C",
+  "theme_color": "#05060C",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
+```
+
+### `prototype/icon.svg`
+
+```xml
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7B6CFF"/>
+      <stop offset="100%" stop-color="#35D6FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="140" fill="url(#g)"/>
+  <text x="256" y="345" font-family="Arial, sans-serif" font-weight="900" font-size="300" fill="#050810" text-anchor="middle">R</text>
+</svg>
+```
+
+### `prototype/sw.js`
+
+```javascript
+'use strict';
+
+const CACHE = 'diario-de-trade-v1';
+const ASSETS = [
+  './',
+  './index.html',
+  './styles.css',
+  './manifest.json',
+  './icon.svg',
+  './js/storage.js',
+  './js/state.js',
+  './js/data.js',
+  './js/killzone.js',
+  './js/calculations.js',
+  './js/filters.js',
+  './js/render.js',
+  './js/chart.js',
+  './js/capital-panel.js',
+  './js/form.js',
+  './js/print.js',
+  './js/init.js',
+  './js/register-sw.js'
+];
+
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+  );
+  self.clients.claim();
+});
+
+// Cache-first com atualização em segundo plano (stale-while-revalidate):
+// serve do cache imediatamente quando existe, e atualiza o cache com a
+// resposta de rede mais recente para a próxima vez.
+self.addEventListener('fetch', (e) => {
+  if (e.request.method !== 'GET') return;
+  e.respondWith(
+    caches.match(e.request).then((cached) => {
+      const fetchPromise = fetch(e.request)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(e.request, copy));
+          }
+          return res;
+        })
+        .catch(() => cached);
+      return cached || fetchPromise;
+    })
+  );
+});
 ```
 
 ### `prototype/js/storage.js`
@@ -1889,5 +1995,22 @@ document.getElementById('printReportBtn').addEventListener('click', ()=>{
 // INICIALIZAÇÃO
 // ──────────────────────────────────────────────────────────────────────────────
 loadAll();
+```
+
+### `prototype/js/register-sw.js`
+
+```javascript
+'use strict';
+
+// Registro do service worker — habilita instalação como PWA e uso offline.
+// Requer contexto seguro (https:// ou http://localhost); em file:// o
+// navegador não expõe navigator.serviceWorker, então isso vira um no-op.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((e) => {
+      console.warn('Service worker não registrado:', e.message);
+    });
+  });
+}
 ```
 
