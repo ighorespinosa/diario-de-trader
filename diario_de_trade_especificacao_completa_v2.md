@@ -106,7 +106,7 @@ Este objeto é editado **exclusivamente** através do modal aberto pelo ícone d
 
 ## 3. Armazenamento (persistência)
 
-O protótipo usa uma API chave-valor por usuário (`window.storage.get/set`), com **fallback automático para `localStorage`** quando essa API não está disponível (por exemplo, ao abrir o arquivo `.html` diretamente em um navegador, fora do ambiente do artifact). Isso é resolvido por duas funções wrapper, `stGet(key)` e `stSet(key, value)`, que checam a disponibilidade de `window.storage` **a cada chamada** (não uma única vez na inicialização, para evitar problemas de timing de injeção do host) e usam `localStorage` como alternativa.
+O protótipo usa três camadas de armazenamento, verificadas **nesta ordem, a cada chamada** (não uma única vez na inicialização — checar só uma vez foi um bug real, ver seção 8, bug 3): **nuvem (Firebase)** → **`window.storage.get/set`** (ambiente artifact) → **`localStorage`** (fallback final, sempre gravado também como cache local mesmo quando a nuvem está disponível). Isso é resolvido por duas funções wrapper, `stGet(key)` e `stSet(key, value)`, em `storage.js`.
 
 | Chave | Conteúdo | Escopo |
 |---|---|---|
@@ -114,6 +114,27 @@ O protótipo usa uma API chave-valor por usuário (`window.storage.get/set`), co
 | `capital-config` | `JSON.stringify(CapitalConfig)` | privado por usuário |
 | `filter-config` | `JSON.stringify(FilterConfig)` | privado por usuário |
 | `location-config` | `JSON.stringify(LocationConfig)` | privado por usuário — **NOVO na v2** |
+
+### 3.1 Sincronização entre aparelhos (Firebase Auth + Firestore) — **NOVO**
+
+Para permitir usar o mesmo diário no computador e no celular com os mesmos dados, o protótipo ganhou uma camada de sincronização opcional em `cloud.js`:
+
+- **Login obrigatório** (`js/cloud.js`): a tela é bloqueada por um overlay de e-mail/senha (`#authOverlay`) até o usuário autenticar via Firebase Authentication. Uma vez logado num aparelho, a sessão persiste (padrão do Firebase) — não precisa logar de novo a cada visita, só ao trocar de aparelho pela primeira vez ou depois de um "Sair" explícito.
+- **`loadAll()` só roda depois que o estado de login resolve** (`auth.onAuthStateChanged`) — isso é crítico: se `loadAll()` rodasse antes, `stGet` ainda não saberia qual usuário está logado e cairia direto no `localStorage` local, ignorando a nuvem. Por isso a antiga chamada direta `loadAll()` em `init.js` foi removida; quem dispara `loadAll()` agora é o callback de autenticação em `cloud.js`, uma única vez por carregamento de página (guardado por uma flag `appStarted`).
+- **`window.cloudGet(key)` / `window.cloudSet(key, value)`**: leem/gravam um único documento Firestore por usuário, em `users/{uid}`, com um campo por chave de armazenamento (mesmos 4 nomes da tabela acima). `stGet`/`stSet` (seção 3, `storage.js`) chamam essas funções como a primeira opção, quando existem (checagem via `typeof window.cloudGet === 'function'`, o mesmo padrão defensivo já usado para `window.storage`) — se falhar (offline, sem permissão, sem login), cai silenciosamente para as camadas seguintes.
+- **Regras de segurança do Firestore (obrigatórias):** cada usuário só pode ler/escrever o próprio documento —
+  ```
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      match /users/{userId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+  }
+  ```
+- **Conflito entre aparelhos:** não há resolução de conflito nem merge campo-a-campo — é "o último a salvar vence" por chave (cada `stSet` sobrescreve o campo inteiro no Firestore). Isso é intencional e suficiente para o caso de uso (uma única pessoa, dois aparelhos, não editando ao mesmo tempo); não é uma solução multiusuário/colaborativa.
+- Este é o único ponto do app que depende de rede para funcionar plenamente — sem Firestore acessível (offline, ou antes do login), o app continua funcionando normalmente só com `localStorage`, sem sincronizar.
 
 **Para portar para mobile/desktop:** substituir por armazenamento local nativo:
 - iOS: `UserDefaults` (se pequeno) ou arquivo JSON em `Documents/` (recomendado, já que o array de trades cresce) ou Core Data/SQLite se quiser queries mais robustas.
@@ -496,7 +517,7 @@ Tema completamente diferente (claro, não o tema escuro do app): fundo branco `#
 4. **Cálculo de killzone:** implementar a aritmética de UTC pura descrita na seção 4.8 (não usar bibliotecas de fuso horário nomeadas como fonte única de verdade) — isso garante o mesmo comportamento correto em qualquer dispositivo/SO, independentemente da base de dados de timezone instalada.
 5. **Modal de configuração:** implementar como uma tela modal nativa (sheet no iOS, `BottomSheetDialog`/`AlertDialog` no Android, janela modal no desktop), reaproveitando os mesmos 4 campos e o mesmo comportamento de cancelar/salvar/fechar-por-fora descritos na seção 5.9.
 6. **Formatação monetária:** reproduzir `Intl.NumberFormat('pt-BR', {style:'currency', currency})` com as APIs de formatação de moeda nativas (`NumberFormatter` no iOS, `NumberFormat` no Android/ICU).
-7. **Sincronização entre plataformas (se desejado no futuro):** como hoje os dados vivem em um armazenamento chave-valor por usuário/local, uma versão nativa multiplataforma precisaria de um backend próprio (ex: Firebase, Supabase, ou API própria) para sincronizar `trades-data`, `capital-config`, `filter-config` e `location-config` entre celular e desktop — isso **não existe ainda** no protótipo atual.
+7. **Sincronização entre plataformas:** o protótipo web já sincroniza via Firebase Auth + Firestore (ver seção 3.1) — uma versão nativa deve replicar o mesmo modelo (login por e-mail/senha, um documento por usuário com um campo por chave de armazenamento, "último a salvar vence") usando os SDKs nativos do Firebase (iOS/Android têm SDK oficial; desktop pode usar a REST API do Firestore ou um backend próprio equivalente).
 
 ---
 
@@ -547,11 +568,13 @@ Qualquer reimplementação nativa deve buscar cobertura equivalente antes de ser
 
 Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em que este documento se baseia — na versão atual (v2), já com o design futurista, o adaptador de storage com fallback, o modal de configuração de horário/localização, e o cálculo de killzone por aritmética de UTC. Use como referência de última instância para qualquer dúvida sobre comportamento, nome de campo, id de elemento ou fórmula — tudo o que está descrito nas seções anteriores foi extraído diretamente deste código, e este código passa integralmente pela suíte de 64 testes automatizados referenciada na seção 11.
 
-**O protótipo vive extraído em arquivos separados no diretório `prototype/`** (HTML + CSS + 12 módulos JS por responsabilidade), em vez de um único bloco monolítico. Os blocos abaixo são cópia literal, arquivo por arquivo, do conteúdo em `prototype/` — continuam sendo a fonte de última instância, só que organizados. A ordem das 12 tags `<script>` de lógica de app no `index.html` é a mesma ordem de execução que o script único tinha antes da divisão; não reordene os módulos ao portar isso para outra plataforma sem reler a seção 4.8 (a chamada imediata de `updateSession()` dentro de `killzone.js` depende de rodar antes de `loadAll()`, chamado só em `init.js`).
+**O protótipo vive extraído em arquivos separados no diretório `prototype/`** (HTML + CSS + 13 módulos JS por responsabilidade), em vez de um único bloco monolítico. Os blocos abaixo são cópia literal, arquivo por arquivo, do conteúdo em `prototype/` — continuam sendo a fonte de última instância, só que organizados. A ordem das tags `<script>` de lógica de app no `index.html` é a mesma ordem de execução que o script único tinha antes da divisão, com `cloud.js` inserido logo após `storage.js` (ver seção 3.1); não reordene os módulos ao portar isso para outra plataforma sem reler a seção 4.8 (a chamada imediata de `updateSession()` dentro de `killzone.js` depende de rodar antes de `loadAll()`) e a seção 3.1 (`loadAll()` só é chamado pelo callback de autenticação em `cloud.js`, não mais diretamente em `init.js`).
 
-**PWA (instalável):** `manifest.json`, `icon.svg` e `sw.js` (service worker, cache-first com atualização em segundo plano) tornam o protótipo instalável como app (ícone, janela própria, uso offline) quando servido por **HTTPS ou `http://localhost`**. `js/register-sw.js` registra o service worker e é a última tag `<script>` do `index.html` — carrega depois de `init.js` de propósito, já que o registro do service worker não tem nenhuma dependência do estado do app. **Em `file://` (duplo clique no `index.html`) o navegador não expõe `navigator.serviceWorker`, então o registro vira um no-op silencioso** — o app continua funcionando normalmente, só não fica instalável nesse modo. No iOS, a instalação é manual via Safari → Compartilhar → "Adicionar à Tela de Início" (a Apple não oferece o prompt automático que existe no Chrome/Edge).
+**PWA (instalável):** `manifest.json`, `icon.svg` e `sw.js` (service worker, cache-first com atualização em segundo plano) tornam o protótipo instalável como app (ícone, janela própria, uso offline) quando servido por **HTTPS ou `http://localhost`**. `js/register-sw.js` registra o service worker e é a última tag `<script>` do `index.html`. **Em `file://` o navegador não expõe `navigator.serviceWorker`, então o registro vira um no-op silencioso.** No iOS, a instalação é manual via Safari → Compartilhar → "Adicionar à Tela de Início".
 
-**Paleta atualizada (identidade "touro/urso"):** os tokens de cor em `styles.css` (`--void`, `--brand`, `--brand2`, `--pos`, `--neg` etc.) foram atualizados para a paleta preto/verde/vermelho descrita na seção 6 — verde para alta/touro, vermelho para baixa/urso. `chart.js`, `manifest.json`, `icon.svg` e a meta tag `theme-color` do `index.html` foram atualizados junto para manter os mesmos tokens em todo lugar. Ao portar isso para outra plataforma, use a tabela de cores da seção 6 como referência única — não reintroduza os valores antigos (violeta `#7B6CFF`/ciano `#35D6FF`) em nenhum lugar.
+**Sincronização entre aparelhos (Firebase):** ver seção 3.1 para o modelo completo. Resumo: `js/cloud.js` inicializa Firebase, bloqueia a tela com um login de e-mail/senha até autenticar, e expõe `window.cloudGet`/`window.cloudSet` que `storage.js` chama como primeira opção de leitura/escrita.
+
+**Paleta (identidade "touro/urso"):** os tokens de cor em `styles.css` seguem a tabela da seção 6 — verde para alta/touro, vermelho para baixa/urso. Não reintroduza os valores antigos (violeta `#7B6CFF`/ciano `#35D6FF`).
 
 ### `prototype/index.html`
 
@@ -565,6 +588,9 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Sora:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
 <link rel="stylesheet" href="styles.css">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -587,9 +613,34 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
     </div>
     <div class="header-right">
       <div class="session-badge mono" id="sessionBadge">Carregando...</div>
+      <button class="btn sec" id="signOutBtn" style="padding:8px 12px;font-size:12px;">Sair</button>
       <button class="gear-btn" id="openSettingsBtn" title="Ajustar horário e localização" aria-label="Ajustar horário e localização">⚙</button>
     </div>
   </header>
+
+  <!-- Login (Firebase) — bloqueia o app até autenticar, sincroniza dados entre aparelhos -->
+  <div class="modal-overlay open" id="authOverlay" style="z-index:100;">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>Entrar</h3>
+      </div>
+      <p class="modal-desc">Entre com sua conta para sincronizar suas operações entre o computador e o celular.</p>
+      <div class="modal-grid" style="grid-template-columns:1fr;">
+        <div class="f">
+          <label>E-mail</label>
+          <input type="email" id="authEmail" autocomplete="username">
+        </div>
+        <div class="f">
+          <label>Senha</label>
+          <input type="password" id="authPassword" autocomplete="current-password">
+        </div>
+      </div>
+      <p class="hint" id="authError" style="color:var(--neg);min-height:16px;"></p>
+      <div class="modal-actions">
+        <button class="btn" id="authLoginBtn">Entrar</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Modal de configuração de horário/localização (fechado por padrão) -->
   <div class="modal-overlay" id="settingsOverlay">
@@ -784,6 +835,7 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
 </div>
 
 <script src="js/storage.js"></script>
+<script src="js/cloud.js"></script>
 <script src="js/state.js"></script>
 <script src="js/data.js"></script>
 <script src="js/killzone.js"></script>
@@ -1200,24 +1252,121 @@ const CAPITAL_KEY = 'capital-config';
 const FILTER_KEY  = 'filter-config';
 
 async function stGet(key){
-  // 1ª opção: window.storage (ambiente artifact — injetado pelo host antes dos scripts)
+  // 1ª opção: nuvem (Firebase — cloud.js), quando há usuário logado, para
+  // sincronizar entre aparelhos. Checado a cada chamada, igual às demais.
+  if(typeof window.cloudGet === 'function'){
+    const cloudVal = await window.cloudGet(key);
+    if(cloudVal !== null && cloudVal !== undefined){
+      try{ localStorage.setItem(key, cloudVal); }catch(e){ /* ok, segue só na nuvem */ }
+      return cloudVal;
+    }
+  }
+  // 2ª opção: window.storage (ambiente artifact — injetado pelo host antes dos scripts)
   if(typeof window.storage !== 'undefined' && window.storage){
     try{
       const r = await window.storage.get(key, false);
       return (r && r.value !== undefined) ? r.value : null;
     }catch(e){ /* cai para localStorage */ }
   }
-  // 2ª opção: localStorage (arquivo aberto diretamente no browser)
+  // 3ª opção: localStorage (arquivo aberto diretamente no browser, ou sem login)
   try{ return localStorage.getItem(key); }catch(e){ return null; }
 }
 
 async function stSet(key, value){
-  if(typeof window.storage !== 'undefined' && window.storage){
-    try{ await window.storage.set(key, value, false); return; }catch(e){ /* cai para localStorage */ }
-  }
   try{ localStorage.setItem(key, value); }catch(e){ console.warn('Storage indisponível:', e); }
+  // Nuvem: grava em paralelo quando há usuário logado (não bloqueia o salvamento local se falhar).
+  if(typeof window.cloudSet === 'function'){ await window.cloudSet(key, value); }
+  if(typeof window.storage !== 'undefined' && window.storage){
+    try{ await window.storage.set(key, value, false); }catch(e){ /* já salvou local(+nuvem) */ }
+  }
 }
 
+```
+
+### `prototype/js/cloud.js`
+
+```javascript
+'use strict';
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SINCRONIZAÇÃO ENTRE APARELHOS (Firebase Auth + Firestore)
+// ──────────────────────────────────────────────────────────────────────────────
+// Camada opcional acima do adaptador de storage (storage.js): quando há um
+// usuário autenticado, cloudGet/cloudSet leem/gravam num documento Firestore
+// por usuário (users/{uid}), além do localStorage local. Isso permite abrir o
+// mesmo login no PC e no celular e ver os mesmos dados nos dois.
+const firebaseConfig = {
+  apiKey: "AIzaSyBtAJW9v76KXvUTER1l34J1A6vnHbIAXBA",
+  authDomain: "diario-de-trader-ir.firebaseapp.com",
+  projectId: "diario-de-trader-ir",
+  storageBucket: "diario-de-trader-ir.firebasestorage.app",
+  messagingSenderId: "314145594930",
+  appId: "1:314145594930:web:c5273c55c016c6bc0ae62b"
+};
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+let cloudUser  = null;
+let appStarted = false;
+
+function showAuthOverlay(msg){
+  document.getElementById('authError').textContent = msg || '';
+  document.getElementById('authOverlay').classList.add('open');
+}
+function hideAuthOverlay(){
+  document.getElementById('authOverlay').classList.remove('open');
+}
+
+// Lidas/gravadas por stGet/stSet (storage.js) sempre que há usuário logado.
+window.cloudGet = async function(key){
+  if(!cloudUser) return null;
+  try{
+    const snap = await db.collection('users').doc(cloudUser.uid).get();
+    if(!snap.exists) return null;
+    const data = snap.data();
+    return (data && data[key] !== undefined) ? data[key] : null;
+  }catch(e){ console.warn('cloudGet falhou:', e.message); return null; }
+};
+
+window.cloudSet = async function(key, value){
+  if(!cloudUser) return;
+  try{
+    await db.collection('users').doc(cloudUser.uid).set({ [key]: value }, { merge:true });
+  }catch(e){ console.warn('cloudSet falhou:', e.message); }
+};
+
+auth.onAuthStateChanged((user) => {
+  cloudUser = user;
+  if(user){
+    hideAuthOverlay();
+    // loadAll() só roda uma vez por carregamento de página, na primeira vez
+    // que o estado de login resolve para um usuário (login já salvo, ou
+    // acabou de ser feito pelo formulário abaixo).
+    if(!appStarted){ appStarted = true; loadAll(); }
+  } else {
+    showAuthOverlay();
+  }
+});
+
+document.getElementById('authLoginBtn').addEventListener('click', async () => {
+  const email = document.getElementById('authEmail').value.trim();
+  const pass  = document.getElementById('authPassword').value;
+  if(!email || !pass){ showAuthOverlay('Preencha e-mail e senha.'); return; }
+  try{
+    await auth.signInWithEmailAndPassword(email, pass);
+  }catch(e){
+    showAuthOverlay('Não foi possível entrar: ' + (e.message || 'verifique e-mail e senha.'));
+  }
+});
+document.getElementById('authPassword').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter') document.getElementById('authLoginBtn').click();
+});
+
+document.getElementById('signOutBtn').addEventListener('click', () => {
+  auth.signOut();
+});
 ```
 
 ### `prototype/js/state.js`
@@ -2001,7 +2150,10 @@ document.getElementById('printReportBtn').addEventListener('click', ()=>{
 // ──────────────────────────────────────────────────────────────────────────────
 // INICIALIZAÇÃO
 // ──────────────────────────────────────────────────────────────────────────────
-loadAll();
+// loadAll() não é chamado diretamente aqui: cloud.js chama assim que o estado
+// de autenticação resolve para um usuário logado (login salvo, ou recém-feito
+// no formulário de entrada), pra garantir que stGet já enxergue o usuário
+// certo antes de qualquer leitura.
 ```
 
 ### `prototype/js/register-sw.js`

@@ -7,6 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Sora:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
 <link rel="stylesheet" href="styles.css">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -29,9 +32,34 @@
     </div>
     <div class="header-right">
       <div class="session-badge mono" id="sessionBadge">Carregando...</div>
+      <button class="btn sec" id="signOutBtn" style="padding:8px 12px;font-size:12px;">Sair</button>
       <button class="gear-btn" id="openSettingsBtn" title="Ajustar horário e localização" aria-label="Ajustar horário e localização">⚙</button>
     </div>
   </header>
+
+  <!-- Login (Firebase) — bloqueia o app até autenticar, sincroniza dados entre aparelhos -->
+  <div class="modal-overlay open" id="authOverlay" style="z-index:100;">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>Entrar</h3>
+      </div>
+      <p class="modal-desc">Entre com sua conta para sincronizar suas operações entre o computador e o celular.</p>
+      <div class="modal-grid" style="grid-template-columns:1fr;">
+        <div class="f">
+          <label>E-mail</label>
+          <input type="email" id="authEmail" autocomplete="username">
+        </div>
+        <div class="f">
+          <label>Senha</label>
+          <input type="password" id="authPassword" autocomplete="current-password">
+        </div>
+      </div>
+      <p class="hint" id="authError" style="color:var(--neg);min-height:16px;"></p>
+      <div class="modal-actions">
+        <button class="btn" id="authLoginBtn">Entrar</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Modal de configuração de horário/localização (fechado por padrão) -->
   <div class="modal-overlay" id="settingsOverlay">
@@ -226,6 +254,7 @@
 </div>
 
 <script src="js/storage.js"></script>
+<script src="js/cloud.js"></script>
 <script src="js/state.js"></script>
 <script src="js/data.js"></script>
 <script src="js/killzone.js"></script>

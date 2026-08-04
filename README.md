@@ -21,9 +21,11 @@ Dois jeitos de abrir:
 
 Nenhuma etapa de instalação é necessária — Chart.js e as fontes (Google Fonts) são carregados via CDN no próprio `index.html`.
 
-### Persistência de dados
+### Persistência de dados e sincronização entre aparelhos
 
-O app grava tudo em `localStorage` do navegador (chaves `trades-data`, `capital-config`, `filter-config`, `location-config`). Não há backend — os dados ficam só naquele navegador/perfil. Para reiniciar do zero, limpe o `localStorage` do site ou abra em uma aba anônima.
+O app exige login (e-mail/senha via Firebase Authentication) e sincroniza os dados num documento Firestore por usuário — é assim que o mesmo diário abre com os mesmos dados no computador e no celular. `localStorage` continua sendo usado como cache local (e fallback se estiver offline ou sem login). Não há resolução de conflito: é "o último a salvar vence" por campo — não use duas abas/aparelhos editando ao mesmo tempo esperando merge automático.
+
+Chaves sincronizadas: `trades-data`, `capital-config`, `filter-config`, `location-config`.
 
 ## Instalar como app (PWA)
 
@@ -43,8 +45,9 @@ prototype/
   icon.svg              # ícone do app (mesmo gradiente/estilo do logo-mark da UI)
   sw.js                   # service worker — cache-first com atualização em segundo plano
   js/
-    storage.js         # adaptador de storage (window.storage com fallback para localStorage)
-    state.js            # estado global (trades, capitalConfig, editingId, equityChart)
+    storage.js         # adaptador de storage (nuvem -> window.storage -> localStorage, nesta ordem)
+    cloud.js            # Firebase Auth (tela de login) + Firestore (sync entre aparelhos)
+    state.js             # estado global (trades, capitalConfig, editingId, equityChart)
     data.js              # carga inicial + migração de registros legados
     killzone.js          # localização/fuso horário e cálculo de killzone (aritmética de UTC)
     calculations.js      # formatação monetária + cálculo de saldo (computeSeries)
