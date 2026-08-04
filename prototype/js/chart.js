@@ -13,17 +13,17 @@ function renderChart(full, filtered){
       labels: labels.length?['Início',...labels]:['Início'],
       datasets:[{
         data: points.length?[base,...points]:[base],
-        borderColor:'#7B6CFF', backgroundColor:'rgba(123,108,255,.10)',
+        borderColor:'#22E065', backgroundColor:'rgba(34,224,101,.10)',
         fill:true, tension:.25, pointRadius:2, borderWidth:2,
-        pointBackgroundColor:'#35D6FF'
+        pointBackgroundColor:'#FF3B4E'
       }]
     },
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false}},
       scales:{
-        x:{ticks:{color:'#7E88A8',font:{size:10}}, grid:{color:'#232B48'}},
-        y:{ticks:{color:'#7E88A8',font:{size:10}, callback:v=>fmtMoney(v)}, grid:{color:'#232B48'}}
+        x:{ticks:{color:'#8A8F8A',font:{size:10}}, grid:{color:'#2B2D2F'}},
+        y:{ticks:{color:'#8A8F8A',font:{size:10}, callback:v=>fmtMoney(v)}, grid:{color:'#2B2D2F'}}
       }
     }
   });

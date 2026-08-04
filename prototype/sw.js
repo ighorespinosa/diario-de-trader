@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'diario-de-trade-v1';
+const CACHE = 'diario-de-trade-v2';
 const ASSETS = [
   './',
   './index.html',

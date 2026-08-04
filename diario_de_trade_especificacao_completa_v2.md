@@ -394,23 +394,28 @@ Gráfico de linha (Chart.js no protótipo web; usar biblioteca de gráfico nativ
 
 ---
 
-## 6. Design system (tokens visuais) — **REESCRITO na v2 (identidade "cockpit noturno")**
+## 6. Design system (tokens visuais) — **REESCRITO na v2 (identidade "cockpit noturno")**, **paleta atualizada (identidade "touro/urso")**
 
 ### Cores
+
+Paleta derivada da identidade visual "IR Sem Medo" (pôster touro verde vs. urso vermelho sobre fundo preto): preto quase puro, verde neon (alta/touro) e vermelho neon (baixa/urso), texto branco/prata.
+
 ```css
---void:   #05060C   /* fundo geral da página */
---panel:  #0F1322   /* fundo dos cards/painéis */
---raised: #161B30   /* fundo de inputs, hover de linhas de tabela */
---line:   #232B48   /* bordas em geral */
---text:   #E9ECF8
---dim:    #7E88A8
---pos:    #4DF5C4   /* cor de destaque positivo (ganho/win) */
---neg:    #FF5C7A   /* cor de destaque negativo (perda/loss) */
---neu:    #FFC65C   /* cor neutra/breakeven */
---brand:  #7B6CFF   /* violeta-elétrico, cor primária de marca */
---brand2: #35D6FF   /* ciano, cor secundária de marca */
+--void:   #050505   /* fundo geral da página — preto quase puro */
+--panel:  #0E0E10   /* fundo dos cards/painéis */
+--raised: #18191B   /* fundo de inputs, hover de linhas de tabela */
+--line:   #2B2D2F   /* bordas em geral */
+--text:   #F2F3F0
+--dim:    #8A8F8A
+--pos:    #22E065   /* cor de destaque positivo (ganho/win) — verde touro */
+--neg:    #FF3B4E   /* cor de destaque negativo (perda/loss) — vermelho urso */
+--neu:    #C9CCC7   /* cor neutra/breakeven — prata, combina com o texto do logo */
+--brand:  #22E065   /* verde touro, cor primária de marca */
+--brand2: #FF3B4E   /* vermelho urso, cor secundária de marca */
 ```
-Gradiente de marca: `linear-gradient(110deg, var(--brand), var(--brand2))` — usado no ícone de logo, botão primário e linhas divisórias sutis no topo de cada painel.
+Gradiente de marca: `linear-gradient(110deg, var(--brand), var(--brand2))` — usado no ícone de logo, botão primário e linhas divisórias sutis no topo de cada painel. O fundo da página reforça o mesmo tema com um brilho radial verde do lado esquerdo e vermelho do lado direito (ver seção "Layout" abaixo) — eco direto da composição touro-à-esquerda/urso-à-direita do pôster de referência.
+
+**Nota de design:** `--brand`/`--brand2` (verde/vermelho) fazem dupla função como identidade visual *e* como semântica de dados (`--pos`/`--neg`), propositalmente — é a mesma dualidade touro/urso do pôster. Para não colidir com o vermelho de "perda/exclusão" em elementos que não são positivos nem negativos, dois ajustes deliberados em relação a um mapeamento 1:1 ingênuo dos tokens antigos: o botão "Editar" de cada linha da tabela e a tag de mercado "Cripto" usam `--brand` (verde) em vez de `--brand2` (vermelho), para não ficarem visualmente idênticos ao botão "Excluir"/badge de perda.
 
 ### Tipografia
 - Display/headers: **Unbounded** (peso 500/700) — usado no logo, título do app, título do modal.
@@ -419,12 +424,12 @@ Gradiente de marca: `linear-gradient(110deg, var(--brand), var(--brand2))` — u
 
 ### Layout e textura de fundo
 - Largura máxima do conteúdo: 1140px, centralizado, padding 26px topo/20px laterais/90px base.
-- Fundo da página com textura sutil: gradientes radiais violeta/ciano no topo + grade pontilhada de linhas finas repetidas a cada 44px (efeito "grid técnico").
+- Fundo da página com textura sutil: brilho radial verde (`--brand`) no canto superior esquerdo + brilho radial vermelho (`--brand2`) no canto superior direito, mais grade pontilhada de linhas finas repetidas a cada 44px (efeito "grid técnico").
 - Cards (`.panel`, `.cp`) com `border-radius: 14px`, borda 1px sólida em `--line`, e uma linha de gradiente sutil de 1px no topo de cada card (efeito de "borda de circuito").
 - Cards de estatística (`.stat-card`) têm decoração de "cantos HUD": bordas em L nos cantos superior-esquerdo (cor `--brand`) e inferior-direito (cor `--brand2`).
 - Botão primário: fundo em gradiente de marca, texto quase-preto `#050810`, `border-radius:8px`.
 - Botão secundário: transparente, borda `--line`.
-- Tags de mercado: pílula colorida translúcida (ciano para Cripto, âmbar para Forex).
+- Tags de mercado: pílula colorida translúcida (verde para Cripto, prata para Forex).
 - Ícone de engrenagem (⚙): botão circular discreto de 40×40px, gira levemente (efeito `rotate(35deg)`) e muda de cor no hover.
 - Modal: overlay escurecido com leve desfoque (`backdrop-filter: blur(3px)`), caixa central com a mesma linguagem visual dos painéis (borda + linha de gradiente no topo).
 
@@ -544,7 +549,9 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
 
 **O protótipo vive extraído em arquivos separados no diretório `prototype/`** (HTML + CSS + 12 módulos JS por responsabilidade), em vez de um único bloco monolítico. Os blocos abaixo são cópia literal, arquivo por arquivo, do conteúdo em `prototype/` — continuam sendo a fonte de última instância, só que organizados. A ordem das 12 tags `<script>` de lógica de app no `index.html` é a mesma ordem de execução que o script único tinha antes da divisão; não reordene os módulos ao portar isso para outra plataforma sem reler a seção 4.8 (a chamada imediata de `updateSession()` dentro de `killzone.js` depende de rodar antes de `loadAll()`, chamado só em `init.js`).
 
-**PWA (instalável) — adicionado nesta revisão:** `manifest.json`, `icon.svg` e `sw.js` (service worker, cache-first com atualização em segundo plano) tornam o protótipo instalável como app (ícone, janela própria, uso offline) quando servido por **HTTPS ou `http://localhost`**. `js/register-sw.js` registra o service worker e é a última tag `<script>` do `index.html` — carrega depois de `init.js` de propósito, já que o registro do service worker não tem nenhuma dependência do estado do app. **Em `file://` (duplo clique no `index.html`) o navegador não expõe `navigator.serviceWorker`, então o registro vira um no-op silencioso** — o app continua funcionando normalmente, só não fica instalável nesse modo.
+**PWA (instalável):** `manifest.json`, `icon.svg` e `sw.js` (service worker, cache-first com atualização em segundo plano) tornam o protótipo instalável como app (ícone, janela própria, uso offline) quando servido por **HTTPS ou `http://localhost`**. `js/register-sw.js` registra o service worker e é a última tag `<script>` do `index.html` — carrega depois de `init.js` de propósito, já que o registro do service worker não tem nenhuma dependência do estado do app. **Em `file://` (duplo clique no `index.html`) o navegador não expõe `navigator.serviceWorker`, então o registro vira um no-op silencioso** — o app continua funcionando normalmente, só não fica instalável nesse modo. No iOS, a instalação é manual via Safari → Compartilhar → "Adicionar à Tela de Início" (a Apple não oferece o prompt automático que existe no Chrome/Edge).
+
+**Paleta atualizada (identidade "touro/urso"):** os tokens de cor em `styles.css` (`--void`, `--brand`, `--brand2`, `--pos`, `--neg` etc.) foram atualizados para a paleta preto/verde/vermelho descrita na seção 6 — verde para alta/touro, vermelho para baixa/urso. `chart.js`, `manifest.json`, `icon.svg` e a meta tag `theme-color` do `index.html` foram atualizados junto para manter os mesmos tokens em todo lugar. Ao portar isso para outra plataforma, use a tabela de cores da seção 6 como referência única — não reintroduza os valores antigos (violeta `#7B6CFF`/ciano `#35D6FF`) em nenhum lugar.
 
 ### `prototype/index.html`
 
@@ -562,7 +569,7 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
-<meta name="theme-color" content="#05060C">
+<meta name="theme-color" content="#050505">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Diário de Trade">
@@ -797,10 +804,10 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
 
 ```css
 :root{
-  --void:#05060C; --panel:#0F1322; --raised:#161B30; --line:#232B48;
-  --text:#E9ECF8; --dim:#7E88A8;
-  --pos:#4DF5C4; --neg:#FF5C7A; --neu:#FFC65C;
-  --brand:#7B6CFF; --brand2:#35D6FF;
+  --void:#050505; --panel:#0E0E10; --raised:#18191B; --line:#2B2D2F;
+  --text:#F2F3F0; --dim:#8A8F8A;
+  --pos:#22E065; --neg:#FF3B4E; --neu:#C9CCC7;
+  --brand:#22E065; --brand2:#FF3B4E;
 }
 *{box-sizing:border-box;}
 html{scrollbar-color:var(--line) transparent;}
@@ -808,10 +815,10 @@ body{
   margin:0;background:var(--void);color:var(--text);
   font-family:'Sora',sans-serif;-webkit-font-smoothing:antialiased;
   background-image:
-    radial-gradient(900px 420px at 75% -120px,rgba(123,108,255,.13),transparent 62%),
-    radial-gradient(700px 380px at 8% -80px,rgba(53,214,255,.07),transparent 60%),
-    repeating-linear-gradient(0deg,rgba(233,236,248,.012) 0 1px,transparent 1px 44px),
-    repeating-linear-gradient(90deg,rgba(233,236,248,.012) 0 1px,transparent 1px 44px);
+    radial-gradient(900px 420px at 75% -120px,rgba(255,59,78,.13),transparent 62%),
+    radial-gradient(700px 380px at 8% -80px,rgba(34,224,101,.09),transparent 60%),
+    repeating-linear-gradient(0deg,rgba(242,243,240,.012) 0 1px,transparent 1px 44px),
+    repeating-linear-gradient(90deg,rgba(242,243,240,.012) 0 1px,transparent 1px 44px);
 }
 .mono{font-family:'JetBrains Mono',monospace;}
 .wrap{max-width:1140px;margin:0 auto;padding:26px 20px 90px;}
@@ -825,12 +832,12 @@ header{display:flex;justify-content:space-between;align-items:center;gap:16px;fl
   font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;
   transition:all .15s;
 }
-.gear-btn:hover{color:var(--brand2);border-color:var(--brand2);transform:rotate(35deg);}
+.gear-btn:hover{color:var(--brand);border-color:var(--brand);transform:rotate(35deg);}
 
 /* Modal de configuração */
 .modal-overlay{
   display:none;position:fixed;inset:0;z-index:50;
-  background:rgba(5,6,12,.72);backdrop-filter:blur(3px);
+  background:rgba(5,5,5,.72);backdrop-filter:blur(3px);
   align-items:center;justify-content:center;padding:20px;
 }
 .modal-overlay.open{display:flex;}
@@ -840,7 +847,7 @@ header{display:flex;justify-content:space-between;align-items:center;gap:16px;fl
 }
 .modal-box::before{
   content:'';position:absolute;top:-1px;left:20px;right:20px;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(123,108,255,.5),rgba(53,214,255,.5),transparent);
+  background:linear-gradient(90deg,transparent,rgba(34,224,101,.5),rgba(255,59,78,.5),transparent);
 }
 .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
 .modal-head h3{font-family:'Unbounded',sans-serif;font-size:15px;margin:0;font-weight:600;}
@@ -861,7 +868,7 @@ header{display:flex;justify-content:space-between;align-items:center;gap:16px;fl
   background:linear-gradient(110deg,var(--brand),var(--brand2));
   display:flex;align-items:center;justify-content:center;
   font-family:'Unbounded',sans-serif;font-weight:700;font-size:16px;color:#050810;
-  box-shadow:0 0 22px rgba(123,108,255,.45);
+  box-shadow:0 0 22px rgba(34,224,101,.45);
 }
 header h1{font-family:'Unbounded',sans-serif;font-size:18px;margin:0;letter-spacing:.04em;font-weight:700;}
 header h1 .thin{color:var(--dim);font-weight:500;}
@@ -894,12 +901,12 @@ header .sub{margin:3px 0 0;color:var(--dim);font-size:12px;}
   text-transform:uppercase;white-space:nowrap;
 }
 .kz-seg:last-child{border-right:none;}
-.kz-seg.is-zone{background:rgba(123,108,255,.10);color:#AFA6FF;}
+.kz-seg.is-zone{background:rgba(34,224,101,.12);color:#9CF0B8;}
 .kz-seg.is-active{background:linear-gradient(90deg,var(--brand),var(--brand2));color:#050810;font-weight:700;}
 .kz-needle{
   position:absolute;top:-4px;bottom:-4px;width:2px;
   background:linear-gradient(180deg,var(--brand),var(--brand2));
-  box-shadow:0 0 10px rgba(53,214,255,.8);pointer-events:none;border-radius:2px;
+  box-shadow:0 0 10px rgba(255,59,78,.8);pointer-events:none;border-radius:2px;
 }
 .kz-needle::after{
   content:'';position:absolute;top:-4px;left:50%;transform:translateX(-50%);
@@ -914,7 +921,7 @@ header .sub{margin:3px 0 0;color:var(--dim);font-size:12px;}
 }
 .panel::before{
   content:'';position:absolute;top:-1px;left:20px;right:20px;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(123,108,255,.45),rgba(53,214,255,.45),transparent);
+  background:linear-gradient(90deg,transparent,rgba(34,224,101,.45),rgba(255,59,78,.45),transparent);
 }
 .panel-h{font-size:12px;margin:0 0 14px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text);}
 .chart-wrap{height:240px;}
@@ -927,7 +934,7 @@ header .sub{margin:3px 0 0;color:var(--dim);font-size:12px;}
 }
 .cp::before{
   content:'';position:absolute;top:-1px;left:20px;right:20px;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(123,108,255,.45),rgba(53,214,255,.45),transparent);
+  background:linear-gradient(90deg,transparent,rgba(34,224,101,.45),rgba(255,59,78,.45),transparent);
 }
 .cp .f{display:flex;flex-direction:column;min-width:150px;}
 .cp label{font-size:10px;color:var(--dim);margin-bottom:5px;text-transform:uppercase;letter-spacing:.1em;}
@@ -942,7 +949,7 @@ input[type="time"],input[type="month"],textarea{
   border-radius:8px;padding:9px 10px;font-family:'Sora',sans-serif;font-size:13.5px;
   width:100%;-webkit-appearance:none;appearance:none;
 }
-select:focus,input:focus,textarea:focus{outline:none;border-color:var(--brand2);box-shadow:0 0 0 2px rgba(53,214,255,.14);}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 2px rgba(34,224,101,.16);}
 select:disabled,input:disabled{opacity:.5;cursor:not-allowed;}
 
 /* Botões */
@@ -954,9 +961,9 @@ select:disabled,input:disabled{opacity:.5;cursor:not-allowed;}
 }
 .btn:hover{filter:brightness(1.1);}
 .btn.sec{background:transparent;border:1px solid var(--line);color:var(--text);}
-.btn.sec:hover{border-color:var(--brand2);}
+.btn.sec:hover{border-color:var(--brand);}
 .btn.danger{background:transparent;border:1px solid var(--neg);color:var(--neg);padding:6px 10px;font-size:12px;}
-.btn.edit-b{background:transparent;border:1px solid var(--brand2);color:var(--brand2);padding:6px 10px;font-size:12px;margin-right:6px;}
+.btn.edit-b{background:transparent;border:1px solid var(--brand);color:var(--brand);padding:6px 10px;font-size:12px;margin-right:6px;}
 
 /* Cards de stats com cantos HUD */
 .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px;}
@@ -1017,7 +1024,7 @@ select:disabled,input:disabled{opacity:.5;cursor:not-allowed;}
   transition:all .12s;font-family:'JetBrains Mono',monospace;
 }
 .chip:hover{border-color:var(--brand2);}
-.chip.on{background:rgba(123,108,255,.16);border-color:var(--brand);color:#BDB4FF;font-weight:600;}
+.chip.on{background:rgba(34,224,101,.16);border-color:var(--brand);color:#A8F5C0;font-weight:600;}
 
 /* Tabelas */
 .tbl-wrap{overflow-x:auto;border-radius:10px;margin:0 -4px;}
@@ -1034,8 +1041,8 @@ tbody td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top
 tbody td.tc-notes,tbody td.tc-setup{white-space:normal;}
 tbody tr:hover{background:var(--raised);}
 .mkt-tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;}
-.mkt-tag.Cripto{background:rgba(53,214,255,.12);color:var(--brand2);}
-.mkt-tag.Forex{background:rgba(255,198,92,.12);color:var(--neu);}
+.mkt-tag.Cripto{background:rgba(34,224,101,.14);color:var(--brand);}
+.mkt-tag.Forex{background:rgba(201,204,199,.14);color:var(--neu);}
 .pnl-win{color:var(--pos);font-weight:600;}
 .pnl-loss{color:var(--neg);font-weight:600;}
 .pnl-be{color:var(--neu);font-weight:600;}
@@ -1094,8 +1101,8 @@ footer{margin-top:26px;text-align:center;color:var(--dim);font-size:11px;letter-
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#05060C",
-  "theme_color": "#05060C",
+  "background_color": "#050505",
+  "theme_color": "#050505",
   "lang": "pt-BR",
   "icons": [
     { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
@@ -1109,8 +1116,8 @@ footer{margin-top:26px;text-align:center;color:var(--dim);font-size:11px;letter-
 <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#7B6CFF"/>
-      <stop offset="100%" stop-color="#35D6FF"/>
+      <stop offset="0%" stop-color="#22E065"/>
+      <stop offset="100%" stop-color="#FF3B4E"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="140" fill="url(#g)"/>
@@ -1123,7 +1130,7 @@ footer{margin-top:26px;text-align:center;color:var(--dim);font-size:11px;letter-
 ```javascript
 'use strict';
 
-const CACHE = 'diario-de-trade-v1';
+const CACHE = 'diario-de-trade-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -1735,17 +1742,17 @@ function renderChart(full, filtered){
       labels: labels.length?['Início',...labels]:['Início'],
       datasets:[{
         data: points.length?[base,...points]:[base],
-        borderColor:'#7B6CFF', backgroundColor:'rgba(123,108,255,.10)',
+        borderColor:'#22E065', backgroundColor:'rgba(34,224,101,.10)',
         fill:true, tension:.25, pointRadius:2, borderWidth:2,
-        pointBackgroundColor:'#35D6FF'
+        pointBackgroundColor:'#FF3B4E'
       }]
     },
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false}},
       scales:{
-        x:{ticks:{color:'#7E88A8',font:{size:10}}, grid:{color:'#232B48'}},
-        y:{ticks:{color:'#7E88A8',font:{size:10}, callback:v=>fmtMoney(v)}, grid:{color:'#232B48'}}
+        x:{ticks:{color:'#8A8F8A',font:{size:10}}, grid:{color:'#2B2D2F'}},
+        y:{ticks:{color:'#8A8F8A',font:{size:10}, callback:v=>fmtMoney(v)}, grid:{color:'#2B2D2F'}}
       }
     }
   });
