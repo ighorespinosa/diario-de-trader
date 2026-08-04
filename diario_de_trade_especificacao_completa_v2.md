@@ -1195,7 +1195,7 @@ footer{margin-top:26px;text-align:center;color:var(--dim);font-size:11px;letter-
 ```javascript
 'use strict';
 
-const CACHE = 'diario-de-trade-v2';
+const CACHE = 'diario-de-trade-v3';
 const ASSETS = [
   './',
   './index.html',
