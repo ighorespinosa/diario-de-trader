@@ -30,22 +30,6 @@ function kzForLocalHour(localHour, offset){
   return kzForUtcHour(utcHour);
 }
 
-// Gera as opções de fuso horário (UTC-12:00 a UTC+14:00, passo de 30min)
-function fmtOffset(o){
-  const sign = o>=0 ? '+' : '−';
-  const abs = Math.abs(o);
-  const h = Math.floor(abs);
-  const m = Math.round((abs-h)*60);
-  return `UTC${sign}${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-}
-function buildOffsetSelect(){
-  const sel = document.getElementById('locOffset');
-  if(!sel) return;
-  const opts = [];
-  for(let m=-12*60; m<=14*60; m+=30){ opts.push(m/60); }
-  sel.innerHTML = opts.map(o=>`<option value="${o}">${fmtOffset(o)}</option>`).join('');
-}
-
 // Monta a régua de 24h dinamicamente: calcula a killzone de cada uma das 24 horas
 // locais (no fuso configurado) e agrupa horas consecutivas com a mesma sessão em
 // um único bloco visual — refeito sempre que a localização muda.
@@ -75,20 +59,21 @@ async function loadLocation(){
   document.getElementById('locCity').value    = locationConfig.city    || '';
   document.getElementById('locState').value   = locationConfig.state  || '';
   document.getElementById('locCountry').value = locationConfig.country|| '';
-  buildOffsetSelect();
-  document.getElementById('locOffset').value  = locationConfig.offset;
   buildRail(locationConfig.offset);
 }
 async function saveLocation(){
   try{ await stSet(LOCATION_KEY, JSON.stringify(locationConfig)); }catch(e){ console.error(e); }
 }
 
+// Fuso horário (locationConfig.offset) não tem mais campo editável no modal —
+// mantém o valor já salvo (padrão -4, Campo Grande) inalterado; só
+// cidade/estado/país são editáveis aqui.
 document.getElementById('saveLocationBtn').addEventListener('click', async ()=>{
   locationConfig = {
     city:    document.getElementById('locCity').value.trim()    || 'Campo Grande',
     state:   document.getElementById('locState').value.trim(),
     country: document.getElementById('locCountry').value.trim(),
-    offset:  parseFloat(document.getElementById('locOffset').value)
+    offset:  locationConfig.offset
   };
   await saveLocation();
   buildRail(locationConfig.offset);
@@ -103,7 +88,6 @@ function openSettingsModal(){
   document.getElementById('locCity').value    = locationConfig.city    || '';
   document.getElementById('locState').value   = locationConfig.state  || '';
   document.getElementById('locCountry').value = locationConfig.country|| '';
-  document.getElementById('locOffset').value  = locationConfig.offset;
   document.getElementById('settingsOverlay').classList.add('open');
 }
 function closeSettingsModal(){

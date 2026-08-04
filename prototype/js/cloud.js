@@ -85,6 +85,13 @@ auth.onAuthStateChanged(async (user) => {
       loadAll();
     }
   } else {
+    // Ao deslogar (inclusive antes de criar/entrar numa outra conta): limpa o
+    // cache local e a flag de início. Sem isso, o localStorage continuava com
+    // os dados da conta anterior — e uma conta nova, sem documento próprio
+    // ainda na nuvem, acabava sendo "semeada" com os dados de quem logou
+    // antes nesse mesmo aparelho/navegador.
+    SYNCED_KEYS.forEach((k) => { try{ localStorage.removeItem(k); }catch(e){ /* ok */ } });
+    appStarted = false;
     showAuthOverlay();
   }
 });
@@ -117,22 +124,36 @@ document.getElementById('signOutBtn').addEventListener('click', () => {
   auth.signOut();
 });
 
-// Botão manual (modal ⚙ → Sincronização): sobrescreve a nuvem com os 4
-// valores atuais de localStorage deste aparelho, sem checar o que já existe
-// lá — para o usuário resolver na mão um caso de dados divergentes.
+// Sobrescreve a nuvem com os 4 valores atuais de localStorage deste
+// aparelho, sem checar o que já existe lá — para o usuário resolver na mão
+// um caso de dados divergentes. Usado pelo botão dentro do modal ⚙ e pelo
+// ícone de sincronização no cabeçalho (mesma ação, dois pontos de acesso).
+async function pushLocalToCloud(){
+  if(!cloudUser) throw new Error('Faça login primeiro.');
+  const payload = {};
+  SYNCED_KEYS.forEach((k) => {
+    const v = localStorage.getItem(k);
+    if(v !== null) payload[k] = v;
+  });
+  await db.collection('users').doc(cloudUser.uid).set(payload, { merge:true });
+}
+
 document.getElementById('forcePushBtn').addEventListener('click', async () => {
   const status = document.getElementById('forcePushStatus');
-  if(!cloudUser){ status.textContent = 'Faça login primeiro.'; status.style.color = 'var(--neg)'; return; }
   status.textContent = 'Enviando...'; status.style.color = 'var(--dim)';
   try{
-    const payload = {};
-    SYNCED_KEYS.forEach((k) => {
-      const v = localStorage.getItem(k);
-      if(v !== null) payload[k] = v;
-    });
-    await db.collection('users').doc(cloudUser.uid).set(payload, { merge:true });
+    await pushLocalToCloud();
     status.textContent = 'Enviado! Já pode abrir nos outros aparelhos.'; status.style.color = 'var(--pos)';
   }catch(e){
     status.textContent = 'Falhou: ' + e.message; status.style.color = 'var(--neg)';
+  }
+});
+
+document.getElementById('syncBtn').addEventListener('click', async () => {
+  try{
+    await pushLocalToCloud();
+    alert('Dados deste aparelho enviados para a nuvem.');
+  }catch(e){
+    alert('Falhou: ' + e.message);
   }
 });

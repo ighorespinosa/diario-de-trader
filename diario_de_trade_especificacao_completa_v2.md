@@ -123,7 +123,8 @@ Para permitir usar o mesmo diário no computador e no celular com os mesmos dado
 - **`loadAll()` só roda depois que o estado de login resolve** (`auth.onAuthStateChanged`) — isso é crítico: se `loadAll()` rodasse antes, `stGet` ainda não saberia qual usuário está logado e cairia direto no `localStorage` local, ignorando a nuvem. Por isso a antiga chamada direta `loadAll()` em `init.js` foi removida; quem dispara `loadAll()` agora é o callback de autenticação em `cloud.js`, uma única vez por carregamento de página (guardado por uma flag `appStarted`).
 - **`window.cloudGet(key)` / `window.cloudSet(key, value)`**: leem/gravam um único documento Firestore por usuário, em `users/{uid}`, com um campo por chave de armazenamento (mesmos 4 nomes da tabela acima). `stGet`/`stSet` (seção 3, `storage.js`) chamam essas funções como a primeira opção, quando existem (checagem via `typeof window.cloudGet === 'function'`, o mesmo padrão defensivo já usado para `window.storage`) — se falhar (offline, sem permissão, sem login), cai silenciosamente para as camadas seguintes.
 - **Semeadura no primeiro login (`seedCloudIfEmpty`, em `cloud.js`):** no primeiro login de uma conta — quando o documento `users/{uid}` ainda não existe — o app copia para a nuvem o que já está salvo no `localStorage` **daquele aparelho**, antes de chamar `loadAll()`. Sem isso, um aparelho com dados só locais (nunca logado antes) simplesmente não aparece na nuvem até o usuário salvar alguma coisa nova — e o *outro* aparelho, ao logar na mesma conta, não vê nada. Isso só roda uma vez (quando o documento não existe); depois disso a nuvem é sempre a fonte de verdade.
-- **Botão manual de reenvio** (`#forcePushBtn`, no modal ⚙ → seção "Sincronização"): sobrescreve incondicionalmente o documento na nuvem com os 4 valores atuais de `localStorage` deste aparelho, sem checar o que já está lá. É a válvula de escape manual para quando dois aparelhos ficaram com dados divergentes (ex.: um deles teve dados locais de antes da sincronização existir) — o usuário escolhe qual aparelho é "a verdade" e força o envio de lá.
+- **Botão manual de reenvio** (`#forcePushBtn` no modal ⚙, ou o ícone 🔄 no cabeçalho — `#syncBtn`, seção 5.1 — mesma ação, dois pontos de acesso): sobrescreve incondicionalmente o documento na nuvem com os 4 valores atuais de `localStorage` deste aparelho, sem checar o que já está lá. É a válvula de escape manual para quando dois aparelhos ficaram com dados divergentes (ex.: um deles teve dados locais de antes da sincronização existir) — o usuário escolhe qual aparelho é "a verdade" e força o envio de lá.
+- **Troca de conta limpa o `localStorage` (bug corrigido):** ao deslogar (`auth.onAuthStateChanged` resolvendo para `null`), `cloud.js` apaga as 4 chaves sincronizadas do `localStorage` deste aparelho e zera a flag `appStarted`. **Sem isso, criar ou entrar numa conta diferente continuava mostrando os dados da conta anterior** — porque `appStarted` impedia um novo `loadAll()`, e `seedCloudIfEmpty()` (item acima), ao rodar pra a conta nova, semeava a nuvem dela com o `localStorage` ainda sujo da conta antiga. Isso significa que **uma conta nova sempre começa vazia** — nunca herda dados de uma conta usada antes no mesmo aparelho/navegador.
 - **Regras de segurança do Firestore (obrigatórias):** cada usuário só pode ler/escrever o próprio documento —
   ```
   rules_version = '2';
@@ -298,12 +299,12 @@ killzone = tabela_utc[utcHour]
 
 **Régua visual de 24h:** a régua é construída dinamicamente — para cada uma das 24 horas do dia (no fuso de referência configurado), calcula-se a killzone correspondente e agrupam-se horas consecutivas com o mesmo nome em um único bloco visual. Isso significa que a régua se redesenha automaticamente sempre que o usuário muda a localização/fuso configurado. Um marcador vertical luminoso ("agulha") indica a posição do horário atual dentro da régua de 24h, atualizado a cada 30 segundos (mesmo intervalo de atualização do relógio do cabeçalho).
 
-### 4.9 Localização de referência (cidade, estado, país, fuso UTC) — **NOVO na v2**
+### 4.9 Localização de referência (cidade, estado, país, fuso UTC) — **NOVO na v2**, **campo de fuso removido do modal**
 
-- O usuário configura, através do modal de configuração (ícone ⚙ no cabeçalho — ver seção 5.9), os campos: Cidade, Estado, País (texto livre, usados apenas para exibição) e Fuso horário (offset numérico em relação a UTC, selecionável em incrementos de 30 minutos, de UTC−12:00 a UTC+14:00).
-- Não há tratamento automático de horário de verão. Se o local do usuário observar horário de verão, o próprio usuário precisa ajustar manualmente o offset duas vezes por ano.
+- O usuário configura, através do modal de configuração (ícone ⚙ no cabeçalho — ver seção 5.9), os campos: Cidade, Estado, País (texto livre, usados apenas para exibição). **O campo "Fuso horário" foi removido do modal** (não estava se comportando de forma confiável) — `locationConfig.offset` continua existindo como dado (usado pelo cálculo de killzone da seção 4.8) mas não é mais editável pela interface; permanece fixo no valor já salvo, ou no padrão de fábrica (`-4`, Campo Grande) se nunca foi alterado antes desta mudança.
 - Este objeto **não afeta nenhum cálculo financeiro** (capital, R, saldo) — impacta **apenas** a exibição do relógio e o cálculo/exibição da killzone.
 - Padrão de fábrica: `{ city:'Campo Grande', state:'MS', country:'Brasil', offset:-4 }`.
+- **Se no futuro for reintroduzida uma forma de editar o offset**, não usar `Intl.DateTimeFormat`/timezone nomeado (IANA) como mecanismo — é exatamente o bug que a seção 4.8 já corrigiu uma vez (seção 8, bug 5). Qualquer novo mecanismo deve continuar alimentando o mesmo `locationConfig.offset` numérico usado pela aritmética pura de UTC.
 
 ---
 
@@ -312,7 +313,9 @@ killzone = tabela_utc[utcHour]
 ### 5.1 Cabeçalho
 - Bloco de logo: ícone quadrado com gradiente (letra "R") + título "Diário de Trade" (com "de" em peso mais leve) + subtítulo "Cripto & Forex · capital, operações e performance".
 - **Relógio de sessão** (`id="sessionBadge"`), à direita: mostra **horário atual + localização configurada (cidade, estado) + nome da killzone atual**, no formato `HH:MM · Cidade, Estado · NomeDaKillzone`, atualizado a cada 30 segundos. Este é o único lugar da tela principal (fora do modal de configuração) onde a localização aparece.
-- **Ícone de engrenagem (⚙)** (`id="openSettingsBtn"`), ao lado do relógio: abre o modal de configuração de horário/localização (ver seção 5.9). Não exibe nenhum campo de formulário diretamente na tela — só o ícone, sempre visível e discreto.
+- **Botão "Sair"** (`id="signOutBtn"`) — encerra a sessão do Firebase (ver seção 3.1); ao deslogar, o `localStorage` local é limpo e a tela de login volta a aparecer.
+- **Ícone de sincronização (🔄)** (`id="syncBtn"`) — atalho de acesso rápido para a mesma ação de "Enviar dados deste aparelho para a nuvem" que existe dentro do modal ⚙ (ver seção 5.9); mostra o resultado num `alert()` (sucesso ou erro), em vez da linha de status usada dentro do modal.
+- **Ícone de engrenagem (⚙)** (`id="openSettingsBtn"`), ao lado do relógio: abre o modal de configuração de localização (ver seção 5.9). Não exibe nenhum campo de formulário diretamente na tela — só o ícone, sempre visível e discreto.
 
 ### 5.2 Painel "Sessões de mercado" (régua de killzone)
 - Título fixo: **"Sessões de mercado"** (sem cidade/estado/UTC — essa informação foi deliberadamente removida deste painel a pedido do usuário; só aparece no relógio do cabeçalho, seção 5.1).
@@ -353,20 +356,21 @@ Tabela + botão **"🖨️ Imprimir relatório do mês"** no cabeçalho do paine
   - Tabela completa das operações do mês: Data, Mercado, Par, Direção, Valor investido, Entrada/Stop/Saída, P&L, Saldo após.
 - Aciona a caixa de impressão nativa do navegador (equivalente nativo: gerar PDF via API do sistema operacional).
 
-### 5.9 Modal de configuração de horário/localização (ícone ⚙) — **NOVO na v2**
+### 5.9 Modal de configuração de localização (ícone ⚙) — **NOVO na v2**, **campo de fuso removido**
 
 Acionado pelo botão de engrenagem no cabeçalho (`id="openSettingsBtn"`). Fica **fechado por padrão** — não aparece a menos que o usuário clique no ícone.
 
 Estrutura do modal (`id="settingsOverlay"` → `.modal-box`):
-- Título: "Horário e localização".
+- Título: "Localização".
 - Botão de fechar (✕) no canto superior direito.
-- Texto explicativo: "Usado para calcular corretamente as killzones de mercado no seu fuso horário."
-- Grid de 4 campos (2 colunas em telas largas, 1 coluna em telas estreitas):
+- Texto explicativo: "Cidade, estado e país exibidos no relógio do cabeçalho."
+- Grid de 3 campos (2 colunas em telas largas, 1 coluna em telas estreitas):
   1. **Cidade** — texto livre, placeholder "Ex: Campo Grande".
   2. **Estado** — texto livre, placeholder "Ex: MS".
   3. **País** — texto livre, placeholder "Ex: Brasil".
-  4. **Fuso horário** — select com todas as opções de UTC−12:00 a UTC+14:00 em passos de 30 minutos, rotulado como `UTC±HH:MM`.
-- Botões: **Cancelar** (fecha sem salvar, descartando qualquer edição feita) / **Salvar** (persiste em `location-config`, recalcula o relógio e a régua imediatamente, e fecha o modal).
+  4. ~~Fuso horário~~ — **removido** (não estava se comportando de forma confiável); ver seção 4.9.
+- Botões: **Cancelar** (fecha sem salvar, descartando qualquer edição feita) / **Salvar** (persiste em `location-config`, recalcula o relógio e a régua imediatamente, e fecha o modal — o `offset` salvo é preservado como estava, já que não há mais campo para editá-lo).
+- Abaixo dos botões, separado por uma linha divisória, uma seção **"Sincronização"** (ver seção 3.1): texto de aviso + botão **"Enviar dados deste aparelho para a nuvem"** (`id="forcePushBtn"`), que sobrescreve o documento Firestore do usuário logado com os 4 valores atuais de `localStorage` deste aparelho, e uma linha de status abaixo (`id="forcePushStatus"`) mostrando "Enviando...", sucesso ou erro.
 
 Comportamentos obrigatórios:
 - Ao **abrir**, os campos são sempre repopulados com o valor **atualmente salvo** (nunca com uma edição anterior descartada).
@@ -540,8 +544,9 @@ Fórmula: R = movimento/risco; ganho = valor_de_entrada × R
 
 Campos do modal de configuração (⚙):
 ```
-Cidade | Estado | País | Fuso horário (UTC-12:00 a UTC+14:00, passo 30min)
-Padrão: Campo Grande / MS / Brasil / UTC-4:00
+Cidade | Estado | País
+Padrão: Campo Grande / MS / Brasil
+(offset de fuso horário — seção 4.9 — não é mais editável aqui; fica fixo em -4 salvo se já tiver sido outro valor antes)
 ```
 
 ---
@@ -568,13 +573,13 @@ Qualquer reimplementação nativa deve buscar cobertura equivalente antes de ser
 
 ## 12. Apêndice — Código-fonte completo e literal do protótipo (HTML/CSS/JS)
 
-Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em que este documento se baseia — na versão atual (v2), já com o design futurista, o adaptador de storage com fallback, o modal de configuração de horário/localização, e o cálculo de killzone por aritmética de UTC. Use como referência de última instância para qualquer dúvida sobre comportamento, nome de campo, id de elemento ou fórmula — tudo o que está descrito nas seções anteriores foi extraído diretamente deste código, e este código passa integralmente pela suíte de 64 testes automatizados referenciada na seção 11.
+Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em que este documento se baseia — na versão atual (v2), já com o design futurista, o adaptador de storage com fallback, o modal de configuração de localização, e o cálculo de killzone por aritmética de UTC. Use como referência de última instância para qualquer dúvida sobre comportamento, nome de campo, id de elemento ou fórmula — tudo o que está descrito nas seções anteriores foi extraído diretamente deste código, e este código passa integralmente pela suíte de 64 testes automatizados referenciada na seção 11.
 
 **O protótipo vive extraído em arquivos separados no diretório `prototype/`** (HTML + CSS + 13 módulos JS por responsabilidade), em vez de um único bloco monolítico. Os blocos abaixo são cópia literal, arquivo por arquivo, do conteúdo em `prototype/` — continuam sendo a fonte de última instância, só que organizados. A ordem das tags `<script>` de lógica de app no `index.html` é a mesma ordem de execução que o script único tinha antes da divisão, com `cloud.js` inserido logo após `storage.js` (ver seção 3.1); não reordene os módulos ao portar isso para outra plataforma sem reler a seção 4.8 (a chamada imediata de `updateSession()` dentro de `killzone.js` depende de rodar antes de `loadAll()`) e a seção 3.1 (`loadAll()` só é chamado pelo callback de autenticação em `cloud.js`, não mais diretamente em `init.js`).
 
 **PWA (instalável):** `manifest.json`, `icon.svg` e `sw.js` (service worker, cache-first com atualização em segundo plano) tornam o protótipo instalável como app (ícone, janela própria, uso offline) quando servido por **HTTPS ou `http://localhost`**. `js/register-sw.js` registra o service worker e é a última tag `<script>` do `index.html`. **Em `file://` o navegador não expõe `navigator.serviceWorker`, então o registro vira um no-op silencioso.** No iOS, a instalação é manual via Safari → Compartilhar → "Adicionar à Tela de Início".
 
-**Sincronização entre aparelhos (Firebase):** ver seção 3.1 para o modelo completo — login/cadastro por e-mail e senha, semeadura da nuvem no primeiro login de cada conta, e um botão manual de reenvio forçado (modal ⚙) para resolver divergências entre aparelhos.
+**Sincronização entre aparelhos (Firebase):** ver seção 3.1 para o modelo completo — login/cadastro por e-mail e senha, semeadura da nuvem no primeiro login de cada conta, troca de conta limpando o `localStorage` local (pra uma conta nova nunca herdar dados de outra), e dois pontos de acesso (modal ⚙ e ícone 🔄 no cabeçalho) para o reenvio manual forçado.
 
 **Paleta (identidade "touro/urso"):** os tokens de cor em `styles.css` seguem a tabela da seção 6 — verde para alta/touro, vermelho para baixa/urso. Não reintroduza os valores antigos (violeta `#7B6CFF`/ciano `#35D6FF`).
 
@@ -616,7 +621,8 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
     <div class="header-right">
       <div class="session-badge mono" id="sessionBadge">Carregando...</div>
       <button class="btn sec" id="signOutBtn" style="padding:8px 12px;font-size:12px;">Sair</button>
-      <button class="gear-btn" id="openSettingsBtn" title="Ajustar horário e localização" aria-label="Ajustar horário e localização">⚙</button>
+      <button class="gear-btn" id="syncBtn" title="Enviar dados deste aparelho para a nuvem" aria-label="Sincronizar">🔄</button>
+      <button class="gear-btn" id="openSettingsBtn" title="Ajustar localização" aria-label="Ajustar localização">⚙</button>
     </div>
   </header>
 
@@ -649,10 +655,10 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
   <div class="modal-overlay" id="settingsOverlay">
     <div class="modal-box">
       <div class="modal-head">
-        <h3>Horário e localização</h3>
+        <h3>Localização</h3>
         <button class="modal-close" id="closeSettingsBtn" aria-label="Fechar">✕</button>
       </div>
-      <p class="modal-desc">Usado para calcular corretamente as killzones de mercado no seu fuso horário.</p>
+      <p class="modal-desc">Cidade, estado e país exibidos no relógio do cabeçalho.</p>
       <div class="modal-grid">
         <div class="f">
           <label>Cidade</label>
@@ -665,10 +671,6 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
         <div class="f">
           <label>País</label>
           <input type="text" id="locCountry" placeholder="Ex: Brasil">
-        </div>
-        <div class="f">
-          <label>Fuso horário</label>
-          <select id="locOffset"></select>
         </div>
       </div>
       <div class="modal-actions">
@@ -1384,6 +1386,13 @@ auth.onAuthStateChanged(async (user) => {
       loadAll();
     }
   } else {
+    // Ao deslogar (inclusive antes de criar/entrar numa outra conta): limpa o
+    // cache local e a flag de início. Sem isso, o localStorage continuava com
+    // os dados da conta anterior — e uma conta nova, sem documento próprio
+    // ainda na nuvem, acabava sendo "semeada" com os dados de quem logou
+    // antes nesse mesmo aparelho/navegador.
+    SYNCED_KEYS.forEach((k) => { try{ localStorage.removeItem(k); }catch(e){ /* ok */ } });
+    appStarted = false;
     showAuthOverlay();
   }
 });
@@ -1416,23 +1425,37 @@ document.getElementById('signOutBtn').addEventListener('click', () => {
   auth.signOut();
 });
 
-// Botão manual (modal ⚙ → Sincronização): sobrescreve a nuvem com os 4
-// valores atuais de localStorage deste aparelho, sem checar o que já existe
-// lá — para o usuário resolver na mão um caso de dados divergentes.
+// Sobrescreve a nuvem com os 4 valores atuais de localStorage deste
+// aparelho, sem checar o que já existe lá — para o usuário resolver na mão
+// um caso de dados divergentes. Usado pelo botão dentro do modal ⚙ e pelo
+// ícone de sincronização no cabeçalho (mesma ação, dois pontos de acesso).
+async function pushLocalToCloud(){
+  if(!cloudUser) throw new Error('Faça login primeiro.');
+  const payload = {};
+  SYNCED_KEYS.forEach((k) => {
+    const v = localStorage.getItem(k);
+    if(v !== null) payload[k] = v;
+  });
+  await db.collection('users').doc(cloudUser.uid).set(payload, { merge:true });
+}
+
 document.getElementById('forcePushBtn').addEventListener('click', async () => {
   const status = document.getElementById('forcePushStatus');
-  if(!cloudUser){ status.textContent = 'Faça login primeiro.'; status.style.color = 'var(--neg)'; return; }
   status.textContent = 'Enviando...'; status.style.color = 'var(--dim)';
   try{
-    const payload = {};
-    SYNCED_KEYS.forEach((k) => {
-      const v = localStorage.getItem(k);
-      if(v !== null) payload[k] = v;
-    });
-    await db.collection('users').doc(cloudUser.uid).set(payload, { merge:true });
+    await pushLocalToCloud();
     status.textContent = 'Enviado! Já pode abrir nos outros aparelhos.'; status.style.color = 'var(--pos)';
   }catch(e){
     status.textContent = 'Falhou: ' + e.message; status.style.color = 'var(--neg)';
+  }
+});
+
+document.getElementById('syncBtn').addEventListener('click', async () => {
+  try{
+    await pushLocalToCloud();
+    alert('Dados deste aparelho enviados para a nuvem.');
+  }catch(e){
+    alert('Falhou: ' + e.message);
   }
 });
 ```
@@ -1573,22 +1596,6 @@ function kzForLocalHour(localHour, offset){
   return kzForUtcHour(utcHour);
 }
 
-// Gera as opções de fuso horário (UTC-12:00 a UTC+14:00, passo de 30min)
-function fmtOffset(o){
-  const sign = o>=0 ? '+' : '−';
-  const abs = Math.abs(o);
-  const h = Math.floor(abs);
-  const m = Math.round((abs-h)*60);
-  return `UTC${sign}${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-}
-function buildOffsetSelect(){
-  const sel = document.getElementById('locOffset');
-  if(!sel) return;
-  const opts = [];
-  for(let m=-12*60; m<=14*60; m+=30){ opts.push(m/60); }
-  sel.innerHTML = opts.map(o=>`<option value="${o}">${fmtOffset(o)}</option>`).join('');
-}
-
 // Monta a régua de 24h dinamicamente: calcula a killzone de cada uma das 24 horas
 // locais (no fuso configurado) e agrupa horas consecutivas com a mesma sessão em
 // um único bloco visual — refeito sempre que a localização muda.
@@ -1618,20 +1625,21 @@ async function loadLocation(){
   document.getElementById('locCity').value    = locationConfig.city    || '';
   document.getElementById('locState').value   = locationConfig.state  || '';
   document.getElementById('locCountry').value = locationConfig.country|| '';
-  buildOffsetSelect();
-  document.getElementById('locOffset').value  = locationConfig.offset;
   buildRail(locationConfig.offset);
 }
 async function saveLocation(){
   try{ await stSet(LOCATION_KEY, JSON.stringify(locationConfig)); }catch(e){ console.error(e); }
 }
 
+// Fuso horário (locationConfig.offset) não tem mais campo editável no modal —
+// mantém o valor já salvo (padrão -4, Campo Grande) inalterado; só
+// cidade/estado/país são editáveis aqui.
 document.getElementById('saveLocationBtn').addEventListener('click', async ()=>{
   locationConfig = {
     city:    document.getElementById('locCity').value.trim()    || 'Campo Grande',
     state:   document.getElementById('locState').value.trim(),
     country: document.getElementById('locCountry').value.trim(),
-    offset:  parseFloat(document.getElementById('locOffset').value)
+    offset:  locationConfig.offset
   };
   await saveLocation();
   buildRail(locationConfig.offset);
@@ -1646,7 +1654,6 @@ function openSettingsModal(){
   document.getElementById('locCity').value    = locationConfig.city    || '';
   document.getElementById('locState').value   = locationConfig.state  || '';
   document.getElementById('locCountry').value = locationConfig.country|| '';
-  document.getElementById('locOffset').value  = locationConfig.offset;
   document.getElementById('settingsOverlay').classList.add('open');
 }
 function closeSettingsModal(){
