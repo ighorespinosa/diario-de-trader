@@ -49,14 +49,41 @@ window.cloudSet = async function(key, value){
   }catch(e){ console.warn('cloudSet falhou:', e.message); }
 };
 
-auth.onAuthStateChanged((user) => {
+// Chaves de storage sincronizadas (mesmas da seção 3). Repetidas aqui em vez
+// de reaproveitar as consts de storage.js/killzone.js de propósito — cloud.js
+// não deve depender da ordem de carregamento dos outros módulos.
+const SYNCED_KEYS = ['trades-data', 'capital-config', 'filter-config', 'location-config'];
+
+// No primeiro login de uma conta (documento ainda não existe na nuvem), semeia
+// a nuvem com o que já está salvo localmente neste aparelho — sem isso, um
+// aparelho com dados só locais "some" ao logar, porque cloudGet passa a
+// responder (mesmo que vazio) e stGet para de cair no localStorage.
+async function seedCloudIfEmpty(){
+  try{
+    const ref = db.collection('users').doc(cloudUser.uid);
+    const snap = await ref.get();
+    if(snap.exists) return;
+    const seed = {};
+    SYNCED_KEYS.forEach((k) => {
+      const v = localStorage.getItem(k);
+      if(v !== null) seed[k] = v;
+    });
+    if(Object.keys(seed).length) await ref.set(seed, { merge:true });
+  }catch(e){ console.warn('Semeadura inicial da nuvem falhou:', e.message); }
+}
+
+auth.onAuthStateChanged(async (user) => {
   cloudUser = user;
   if(user){
     hideAuthOverlay();
     // loadAll() só roda uma vez por carregamento de página, na primeira vez
     // que o estado de login resolve para um usuário (login já salvo, ou
     // acabou de ser feito pelo formulário abaixo).
-    if(!appStarted){ appStarted = true; loadAll(); }
+    if(!appStarted){
+      appStarted = true;
+      await seedCloudIfEmpty();
+      loadAll();
+    }
   } else {
     showAuthOverlay();
   }
@@ -72,10 +99,40 @@ document.getElementById('authLoginBtn').addEventListener('click', async () => {
     showAuthOverlay('Não foi possível entrar: ' + (e.message || 'verifique e-mail e senha.'));
   }
 });
+document.getElementById('authSignupBtn').addEventListener('click', async () => {
+  const email = document.getElementById('authEmail').value.trim();
+  const pass  = document.getElementById('authPassword').value;
+  if(!email || !pass){ showAuthOverlay('Preencha e-mail e senha.'); return; }
+  try{
+    await auth.createUserWithEmailAndPassword(email, pass);
+  }catch(e){
+    showAuthOverlay('Não foi possível criar a conta: ' + (e.message || 'tente outro e-mail/senha.'));
+  }
+});
 document.getElementById('authPassword').addEventListener('keydown', (e) => {
   if(e.key === 'Enter') document.getElementById('authLoginBtn').click();
 });
 
 document.getElementById('signOutBtn').addEventListener('click', () => {
   auth.signOut();
+});
+
+// Botão manual (modal ⚙ → Sincronização): sobrescreve a nuvem com os 4
+// valores atuais de localStorage deste aparelho, sem checar o que já existe
+// lá — para o usuário resolver na mão um caso de dados divergentes.
+document.getElementById('forcePushBtn').addEventListener('click', async () => {
+  const status = document.getElementById('forcePushStatus');
+  if(!cloudUser){ status.textContent = 'Faça login primeiro.'; status.style.color = 'var(--neg)'; return; }
+  status.textContent = 'Enviando...'; status.style.color = 'var(--dim)';
+  try{
+    const payload = {};
+    SYNCED_KEYS.forEach((k) => {
+      const v = localStorage.getItem(k);
+      if(v !== null) payload[k] = v;
+    });
+    await db.collection('users').doc(cloudUser.uid).set(payload, { merge:true });
+    status.textContent = 'Enviado! Já pode abrir nos outros aparelhos.'; status.style.color = 'var(--pos)';
+  }catch(e){
+    status.textContent = 'Falhou: ' + e.message; status.style.color = 'var(--neg)';
+  }
 });

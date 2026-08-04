@@ -119,9 +119,11 @@ O protótipo usa três camadas de armazenamento, verificadas **nesta ordem, a ca
 
 Para permitir usar o mesmo diário no computador e no celular com os mesmos dados, o protótipo ganhou uma camada de sincronização opcional em `cloud.js`:
 
-- **Login obrigatório** (`js/cloud.js`): a tela é bloqueada por um overlay de e-mail/senha (`#authOverlay`) até o usuário autenticar via Firebase Authentication. Uma vez logado num aparelho, a sessão persiste (padrão do Firebase) — não precisa logar de novo a cada visita, só ao trocar de aparelho pela primeira vez ou depois de um "Sair" explícito.
+- **Login ou cadastro obrigatório** (`js/cloud.js`): a tela é bloqueada por um overlay de e-mail/senha (`#authOverlay`) até o usuário autenticar via Firebase Authentication — com botões separados **"Entrar"** (`signInWithEmailAndPassword`) e **"Criar conta"** (`createUserWithEmailAndPassword`; cria e já autentica). Uma vez logado num aparelho, a sessão persiste (padrão do Firebase) — não precisa logar de novo a cada visita, só ao trocar de aparelho pela primeira vez ou depois de um "Sair" explícito.
 - **`loadAll()` só roda depois que o estado de login resolve** (`auth.onAuthStateChanged`) — isso é crítico: se `loadAll()` rodasse antes, `stGet` ainda não saberia qual usuário está logado e cairia direto no `localStorage` local, ignorando a nuvem. Por isso a antiga chamada direta `loadAll()` em `init.js` foi removida; quem dispara `loadAll()` agora é o callback de autenticação em `cloud.js`, uma única vez por carregamento de página (guardado por uma flag `appStarted`).
 - **`window.cloudGet(key)` / `window.cloudSet(key, value)`**: leem/gravam um único documento Firestore por usuário, em `users/{uid}`, com um campo por chave de armazenamento (mesmos 4 nomes da tabela acima). `stGet`/`stSet` (seção 3, `storage.js`) chamam essas funções como a primeira opção, quando existem (checagem via `typeof window.cloudGet === 'function'`, o mesmo padrão defensivo já usado para `window.storage`) — se falhar (offline, sem permissão, sem login), cai silenciosamente para as camadas seguintes.
+- **Semeadura no primeiro login (`seedCloudIfEmpty`, em `cloud.js`):** no primeiro login de uma conta — quando o documento `users/{uid}` ainda não existe — o app copia para a nuvem o que já está salvo no `localStorage` **daquele aparelho**, antes de chamar `loadAll()`. Sem isso, um aparelho com dados só locais (nunca logado antes) simplesmente não aparece na nuvem até o usuário salvar alguma coisa nova — e o *outro* aparelho, ao logar na mesma conta, não vê nada. Isso só roda uma vez (quando o documento não existe); depois disso a nuvem é sempre a fonte de verdade.
+- **Botão manual de reenvio** (`#forcePushBtn`, no modal ⚙ → seção "Sincronização"): sobrescreve incondicionalmente o documento na nuvem com os 4 valores atuais de `localStorage` deste aparelho, sem checar o que já está lá. É a válvula de escape manual para quando dois aparelhos ficaram com dados divergentes (ex.: um deles teve dados locais de antes da sincronização existir) — o usuário escolhe qual aparelho é "a verdade" e força o envio de lá.
 - **Regras de segurança do Firestore (obrigatórias):** cada usuário só pode ler/escrever o próprio documento —
   ```
   rules_version = '2';
@@ -572,7 +574,7 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
 
 **PWA (instalável):** `manifest.json`, `icon.svg` e `sw.js` (service worker, cache-first com atualização em segundo plano) tornam o protótipo instalável como app (ícone, janela própria, uso offline) quando servido por **HTTPS ou `http://localhost`**. `js/register-sw.js` registra o service worker e é a última tag `<script>` do `index.html`. **Em `file://` o navegador não expõe `navigator.serviceWorker`, então o registro vira um no-op silencioso.** No iOS, a instalação é manual via Safari → Compartilhar → "Adicionar à Tela de Início".
 
-**Sincronização entre aparelhos (Firebase):** ver seção 3.1 para o modelo completo. Resumo: `js/cloud.js` inicializa Firebase, bloqueia a tela com um login de e-mail/senha até autenticar, e expõe `window.cloudGet`/`window.cloudSet` que `storage.js` chama como primeira opção de leitura/escrita.
+**Sincronização entre aparelhos (Firebase):** ver seção 3.1 para o modelo completo — login/cadastro por e-mail e senha, semeadura da nuvem no primeiro login de cada conta, e um botão manual de reenvio forçado (modal ⚙) para resolver divergências entre aparelhos.
 
 **Paleta (identidade "touro/urso"):** os tokens de cor em `styles.css` seguem a tabela da seção 6 — verde para alta/touro, vermelho para baixa/urso. Não reintroduza os valores antigos (violeta `#7B6CFF`/ciano `#35D6FF`).
 
@@ -637,6 +639,7 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
       </div>
       <p class="hint" id="authError" style="color:var(--neg);min-height:16px;"></p>
       <div class="modal-actions">
+        <button class="btn sec" id="authSignupBtn">Criar conta</button>
         <button class="btn" id="authLoginBtn">Entrar</button>
       </div>
     </div>
@@ -672,6 +675,14 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
         <button class="btn sec" id="cancelSettingsBtn">Cancelar</button>
         <button class="btn" id="saveLocationBtn">Salvar</button>
       </div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:18px 0 14px;">
+      <p class="modal-desc" style="margin-bottom:8px;">
+        <b style="color:var(--text);">Sincronização:</b> use isto só se os dados deste aparelho e da nuvem estiverem divergentes — sobrescreve a nuvem com o que está salvo aqui, e some ao próximo login em outros aparelhos.
+      </p>
+      <div class="modal-actions" style="justify-content:flex-start;">
+        <button class="btn sec" id="forcePushBtn">Enviar dados deste aparelho para a nuvem</button>
+      </div>
+      <p class="hint" id="forcePushStatus" style="min-height:16px;"></p>
     </div>
   </div>
 
@@ -1337,14 +1348,41 @@ window.cloudSet = async function(key, value){
   }catch(e){ console.warn('cloudSet falhou:', e.message); }
 };
 
-auth.onAuthStateChanged((user) => {
+// Chaves de storage sincronizadas (mesmas da seção 3). Repetidas aqui em vez
+// de reaproveitar as consts de storage.js/killzone.js de propósito — cloud.js
+// não deve depender da ordem de carregamento dos outros módulos.
+const SYNCED_KEYS = ['trades-data', 'capital-config', 'filter-config', 'location-config'];
+
+// No primeiro login de uma conta (documento ainda não existe na nuvem), semeia
+// a nuvem com o que já está salvo localmente neste aparelho — sem isso, um
+// aparelho com dados só locais "some" ao logar, porque cloudGet passa a
+// responder (mesmo que vazio) e stGet para de cair no localStorage.
+async function seedCloudIfEmpty(){
+  try{
+    const ref = db.collection('users').doc(cloudUser.uid);
+    const snap = await ref.get();
+    if(snap.exists) return;
+    const seed = {};
+    SYNCED_KEYS.forEach((k) => {
+      const v = localStorage.getItem(k);
+      if(v !== null) seed[k] = v;
+    });
+    if(Object.keys(seed).length) await ref.set(seed, { merge:true });
+  }catch(e){ console.warn('Semeadura inicial da nuvem falhou:', e.message); }
+}
+
+auth.onAuthStateChanged(async (user) => {
   cloudUser = user;
   if(user){
     hideAuthOverlay();
     // loadAll() só roda uma vez por carregamento de página, na primeira vez
     // que o estado de login resolve para um usuário (login já salvo, ou
     // acabou de ser feito pelo formulário abaixo).
-    if(!appStarted){ appStarted = true; loadAll(); }
+    if(!appStarted){
+      appStarted = true;
+      await seedCloudIfEmpty();
+      loadAll();
+    }
   } else {
     showAuthOverlay();
   }
@@ -1360,12 +1398,42 @@ document.getElementById('authLoginBtn').addEventListener('click', async () => {
     showAuthOverlay('Não foi possível entrar: ' + (e.message || 'verifique e-mail e senha.'));
   }
 });
+document.getElementById('authSignupBtn').addEventListener('click', async () => {
+  const email = document.getElementById('authEmail').value.trim();
+  const pass  = document.getElementById('authPassword').value;
+  if(!email || !pass){ showAuthOverlay('Preencha e-mail e senha.'); return; }
+  try{
+    await auth.createUserWithEmailAndPassword(email, pass);
+  }catch(e){
+    showAuthOverlay('Não foi possível criar a conta: ' + (e.message || 'tente outro e-mail/senha.'));
+  }
+});
 document.getElementById('authPassword').addEventListener('keydown', (e) => {
   if(e.key === 'Enter') document.getElementById('authLoginBtn').click();
 });
 
 document.getElementById('signOutBtn').addEventListener('click', () => {
   auth.signOut();
+});
+
+// Botão manual (modal ⚙ → Sincronização): sobrescreve a nuvem com os 4
+// valores atuais de localStorage deste aparelho, sem checar o que já existe
+// lá — para o usuário resolver na mão um caso de dados divergentes.
+document.getElementById('forcePushBtn').addEventListener('click', async () => {
+  const status = document.getElementById('forcePushStatus');
+  if(!cloudUser){ status.textContent = 'Faça login primeiro.'; status.style.color = 'var(--neg)'; return; }
+  status.textContent = 'Enviando...'; status.style.color = 'var(--dim)';
+  try{
+    const payload = {};
+    SYNCED_KEYS.forEach((k) => {
+      const v = localStorage.getItem(k);
+      if(v !== null) payload[k] = v;
+    });
+    await db.collection('users').doc(cloudUser.uid).set(payload, { merge:true });
+    status.textContent = 'Enviado! Já pode abrir nos outros aparelhos.'; status.style.color = 'var(--pos)';
+  }catch(e){
+    status.textContent = 'Falhou: ' + e.message; status.style.color = 'var(--neg)';
+  }
 });
 ```
 

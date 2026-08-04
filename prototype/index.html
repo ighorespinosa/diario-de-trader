@@ -56,6 +56,7 @@
       </div>
       <p class="hint" id="authError" style="color:var(--neg);min-height:16px;"></p>
       <div class="modal-actions">
+        <button class="btn sec" id="authSignupBtn">Criar conta</button>
         <button class="btn" id="authLoginBtn">Entrar</button>
       </div>
     </div>
@@ -91,6 +92,14 @@
         <button class="btn sec" id="cancelSettingsBtn">Cancelar</button>
         <button class="btn" id="saveLocationBtn">Salvar</button>
       </div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:18px 0 14px;">
+      <p class="modal-desc" style="margin-bottom:8px;">
+        <b style="color:var(--text);">Sincronização:</b> use isto só se os dados deste aparelho e da nuvem estiverem divergentes — sobrescreve a nuvem com o que está salvo aqui, e some ao próximo login em outros aparelhos.
+      </p>
+      <div class="modal-actions" style="justify-content:flex-start;">
+        <button class="btn sec" id="forcePushBtn">Enviar dados deste aparelho para a nuvem</button>
+      </div>
+      <p class="hint" id="forcePushStatus" style="min-height:16px;"></p>
     </div>
   </div>
 
