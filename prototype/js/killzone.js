@@ -3,31 +3,49 @@
 // ──────────────────────────────────────────────────────────────────────────────
 // SESSÃO / KILLZONES
 // ──────────────────────────────────────────────────────────────────────────────
-// As killzones (Ásia, Londres, NY AM, Fechamento Londres, NY PM) são sessões reais
-// de mercado, fixas em horário UTC. A tabela abaixo é a tabela original da
-// especificação (definida para Campo Grande, UTC-4) convertida para UTC puro:
-// isso permite recalcular corretamente os horários para QUALQUER fuso de
-// referência que o usuário configurar, sem perder a correspondência com as
-// sessões reais de mercado.
+// As killzones são sessões reais de mercado, fixas em horário UTC. A tabela
+// abaixo foi fornecida em horário local de Campo Grande (UTC-4):
+//   00:00–03:00 Pausa | 03:00–05:00 Londres | 05:00–08:00 Pausa
+//   08:00–12:00 Londres/NY | 12:00–18:00 NY | 17:00–19:00 Pausa
+//   19:00–22:00 Ásia/Tóquio | 22:00–00:00 Pré Sydney
+// (a faixa 17:00–19:00 "Pausa" propositalmente sobrepõe o fim de "NY", que
+// vale até 18:00 — a entrada listada por último vence para a hora 17 local)
+// — convertida aqui para UTC puro (+4h) para poder ser recalculada
+// corretamente para QUALQUER fuso de referência que o usuário configurar.
 const LOCATION_KEY = 'location-config';
 let locationConfig = { city:'Campo Grande', state:'MS', country:'Brasil', offset:-4 };
 
 function kzForUtcHour(h){
   h = ((h%24)+24)%24;
-  if(h>=23 || h<4)  return 'Ásia';
-  if(h<6)  return '';
+  if(h>=23 || h<2)  return 'Ásia/Tóquio';
+  if(h<4)  return 'Pré Sydney';
+  if(h<7)  return 'Pausa';
   if(h<9)  return 'Londres';
-  if(h<11) return '';
-  if(h<14) return 'NY AM';
-  if(h<16) return 'Fechamento Londres';
-  if(h<17) return '';
-  if(h<20) return 'NY PM';
-  return '';
+  if(h<12) return 'Pausa';
+  if(h<16) return 'Londres/NY';
+  if(h<21) return 'NY';
+  return 'Pausa';
 }
 // Converte hora local (no fuso de referência configurado) para a killzone correta.
 function kzForLocalHour(localHour, offset){
   const utcHour = ((Math.floor(localHour) - offset) % 24 + 24) % 24;
   return kzForUtcHour(utcHour);
+}
+
+// Gera as opções de fuso horário (UTC-12:00 a UTC+14:00, passo de 30min)
+function fmtOffset(o){
+  const sign = o>=0 ? '+' : '−';
+  const abs = Math.abs(o);
+  const h = Math.floor(abs);
+  const m = Math.round((abs-h)*60);
+  return `UTC${sign}${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+function buildOffsetSelect(){
+  const sel = document.getElementById('locOffset');
+  if(!sel) return;
+  const opts = [];
+  for(let m=-12*60; m<=14*60; m+=30){ opts.push(m/60); }
+  sel.innerHTML = opts.map(o=>`<option value="${o}">${fmtOffset(o)}</option>`).join('');
 }
 
 // Monta a régua de 24h dinamicamente: calcula a killzone de cada uma das 24 horas
@@ -59,21 +77,20 @@ async function loadLocation(){
   document.getElementById('locCity').value    = locationConfig.city    || '';
   document.getElementById('locState').value   = locationConfig.state  || '';
   document.getElementById('locCountry').value = locationConfig.country|| '';
+  buildOffsetSelect();
+  document.getElementById('locOffset').value  = locationConfig.offset;
   buildRail(locationConfig.offset);
 }
 async function saveLocation(){
   try{ await stSet(LOCATION_KEY, JSON.stringify(locationConfig)); }catch(e){ console.error(e); }
 }
 
-// Fuso horário (locationConfig.offset) não tem mais campo editável no modal —
-// mantém o valor já salvo (padrão -4, Campo Grande) inalterado; só
-// cidade/estado/país são editáveis aqui.
 document.getElementById('saveLocationBtn').addEventListener('click', async ()=>{
   locationConfig = {
     city:    document.getElementById('locCity').value.trim()    || 'Campo Grande',
     state:   document.getElementById('locState').value.trim(),
     country: document.getElementById('locCountry').value.trim(),
-    offset:  locationConfig.offset
+    offset:  parseFloat(document.getElementById('locOffset').value)
   };
   await saveLocation();
   buildRail(locationConfig.offset);
@@ -88,6 +105,7 @@ function openSettingsModal(){
   document.getElementById('locCity').value    = locationConfig.city    || '';
   document.getElementById('locState').value   = locationConfig.state  || '';
   document.getElementById('locCountry').value = locationConfig.country|| '';
+  document.getElementById('locOffset').value  = locationConfig.offset;
   document.getElementById('settingsOverlay').classList.add('open');
 }
 function closeSettingsModal(){

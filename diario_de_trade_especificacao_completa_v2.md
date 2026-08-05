@@ -261,7 +261,7 @@ altura_px = clamp(14, 56, |pnlValor| / saldoAntes × 400 + 14)   // se pnlValor=
 cor: verde-água (win) / coral (loss) / âmbar (BE)
 ```
 
-### 4.8 Indicador de sessão / killzone — **REESCRITO na v2**
+### 4.8 Indicador de sessão / killzone — **REESCRITO na v2**, **tabela de sessões atualizada**
 
 Na v1, o horário atual era obtido via `Intl.DateTimeFormat` com um fuso horário fixo (`America/Campo_Grande`), dependendo do banco de dados de fusos horários (IANA/tz) do navegador. Isso se mostrou **não confiável**: se o navegador/ambiente não resolvesse corretamente esse fuso, ou se o dispositivo estivesse configurado com outro fuso, o horário calculado saía incorreto — o que quebrava o indicador de killzone.
 
@@ -275,19 +275,22 @@ ref_ms = utc_ms + offset_configurado * 3600000
 hora_local_referencia = new Date(ref_ms)   // usar getUTCHours()/getUTCMinutes() para extrair hh/mm
 ```
 
-As killzones (Ásia, Londres, NY AM, Fechamento Londres, NY PM) são **sessões reais de mercado, fixas em horário UTC absoluto** — não são apenas blocos arbitrários de horas. A tabela abaixo é a tabela original da especificação v1 (definida em termos do fuso de Campo Grande, UTC−4) **convertida para UTC puro**, o que permite recalcular corretamente a killzone para **qualquer fuso horário de referência** que o usuário configure, sem perder a correspondência com as sessões reais de mercado:
+As killzones são **sessões reais de mercado, fixas em horário UTC absoluto** — não são apenas blocos arbitrários de horas. **A tabela abaixo substitui a tabela original da v1/v2** (a nomenclatura antiga, com "Fechamento Londres", foi considerada confusa e substituída por uma tabela nova, sem lacunas — todo período do dia agora tem um nome, incluindo os antigos intervalos "fora de killzone", agora chamados "Pausa").
 
-| Faixa de horário (UTC) | Killzone |
-|---|---|
-| 23:00 – 03:59 | Ásia |
-| 04:00 – 05:59 | (fora de killzone) |
-| 06:00 – 08:59 | Londres |
-| 09:00 – 10:59 | (fora de killzone) |
-| 11:00 – 13:59 | NY AM |
-| 14:00 – 15:59 | Fechamento Londres |
-| 16:00 – 16:59 | (fora de killzone) |
-| 17:00 – 19:59 | NY PM |
-| 20:00 – 22:59 | (fora de killzone) |
+A tabela foi fornecida em **horário local de Campo Grande (UTC−4)** e convertida aqui para UTC puro (somando 4h a cada faixa), o que permite recalcular corretamente a killzone para **qualquer fuso horário de referência** que o usuário configure:
+
+| Horário local (Campo Grande, UTC−4) | Faixa de horário (UTC) | Killzone |
+|---|---|---|
+| 00:00 – 02:59 | 04:00 – 06:59 | Pausa |
+| 03:00 – 04:59 | 07:00 – 08:59 | Londres |
+| 05:00 – 07:59 | 09:00 – 11:59 | Pausa |
+| 08:00 – 11:59 | 12:00 – 15:59 | Londres/NY |
+| 12:00 – 16:59 | 16:00 – 20:59 | NY |
+| 17:00 – 18:59 | 21:00 – 22:59 | Pausa |
+| 19:00 – 21:59 | 23:00 – 01:59 | Ásia/Tóquio |
+| 22:00 – 23:59 | 02:00 – 03:59 | Pré Sydney |
+
+**Sobreposição intencional:** a faixa local `17:00–19:00 Pausa` foi fornecida se sobrepondo ao fim de `12:00–18:00 NY` (a hora 17 local pertence às duas, conforme especificado). A regra de resolução é **a entrada listada por último vence** — por isso a hora local 17 (UTC 21) é `Pausa`, não `NY`. Isso é refletido literalmente na cadeia de `if/else` de `kzForUtcHour()` (seção 12, `killzone.js`): cada `if` é checado em ordem, e a primeira faixa (em ordem UTC crescente) que bate com a hora vence — não há tentativa de "consertar" a sobreposição.
 
 Para obter a killzone na hora **local de referência** (a que o usuário configurou), converte-se primeiro para UTC:
 ```
@@ -295,16 +298,17 @@ utcHour = ((horaLocalReferencia − offset_configurado) % 24 + 24) % 24
 killzone = tabela_utc[utcHour]
 ```
 
-**Validação obrigatória:** com `offset = -4` (Campo Grande, padrão), o resultado desta fórmula deve ser **idêntico**, hora a hora, à tabela original da v1 (validado por teste automatizado com as 17 horas de referência da especificação original).
+**Validação:** com `offset = -4` (Campo Grande, padrão), a função deve devolver exatamente os nomes da coluna "Killzone" acima para cada hora local 0–23 — foi conferido hora a hora nesta revisão (ver seção 12, `killzone.js`, para o código exato). Diferente das tabelas anteriores, esta não tem mais lacunas: todas as 24 horas têm um nome de sessão.
 
 **Régua visual de 24h:** a régua é construída dinamicamente — para cada uma das 24 horas do dia (no fuso de referência configurado), calcula-se a killzone correspondente e agrupam-se horas consecutivas com o mesmo nome em um único bloco visual. Isso significa que a régua se redesenha automaticamente sempre que o usuário muda a localização/fuso configurado. Um marcador vertical luminoso ("agulha") indica a posição do horário atual dentro da régua de 24h, atualizado a cada 30 segundos (mesmo intervalo de atualização do relógio do cabeçalho).
 
-### 4.9 Localização de referência (cidade, estado, país, fuso UTC) — **NOVO na v2**, **campo de fuso removido do modal**
+### 4.9 Localização de referência (cidade, estado, país, fuso UTC) — **NOVO na v2**
 
-- O usuário configura, através do modal de configuração (ícone ⚙ no cabeçalho — ver seção 5.9), os campos: Cidade, Estado, País (texto livre, usados apenas para exibição). **O campo "Fuso horário" foi removido do modal** (não estava se comportando de forma confiável) — `locationConfig.offset` continua existindo como dado (usado pelo cálculo de killzone da seção 4.8) mas não é mais editável pela interface; permanece fixo no valor já salvo, ou no padrão de fábrica (`-4`, Campo Grande) se nunca foi alterado antes desta mudança.
+- O usuário configura, através do modal de configuração (ícone ⚙ no cabeçalho — ver seção 5.9), os campos: Cidade, Estado, País (texto livre, usados apenas para exibição) e Fuso horário (offset numérico em relação a UTC, selecionável em incrementos de 30 minutos, de UTC−12:00 a UTC+14:00).
+- Não há tratamento automático de horário de verão. Se o local do usuário observar horário de verão, o próprio usuário precisa ajustar manualmente o offset duas vezes por ano.
 - Este objeto **não afeta nenhum cálculo financeiro** (capital, R, saldo) — impacta **apenas** a exibição do relógio e o cálculo/exibição da killzone.
 - Padrão de fábrica: `{ city:'Campo Grande', state:'MS', country:'Brasil', offset:-4 }`.
-- **Se no futuro for reintroduzida uma forma de editar o offset**, não usar `Intl.DateTimeFormat`/timezone nomeado (IANA) como mecanismo — é exatamente o bug que a seção 4.8 já corrigiu uma vez (seção 8, bug 5). Qualquer novo mecanismo deve continuar alimentando o mesmo `locationConfig.offset` numérico usado pela aritmética pura de UTC.
+- **Não usar `Intl.DateTimeFormat`/timezone nomeado (IANA) como mecanismo** de conversão — é exatamente o bug que a seção 4.8 já corrigiu uma vez (seção 8, bug 5). O offset numérico configurado aqui alimenta a aritmética pura de UTC usada pelo cálculo de killzone (seção 4.8).
 
 ---
 
@@ -315,7 +319,7 @@ killzone = tabela_utc[utcHour]
 - **Relógio de sessão** (`id="sessionBadge"`), à direita: mostra **horário atual + localização configurada (cidade, estado) + nome da killzone atual**, no formato `HH:MM · Cidade, Estado · NomeDaKillzone`, atualizado a cada 30 segundos. Este é o único lugar da tela principal (fora do modal de configuração) onde a localização aparece.
 - **Botão "Sair"** (`id="signOutBtn"`) — encerra a sessão do Firebase (ver seção 3.1); ao deslogar, o `localStorage` local é limpo e a tela de login volta a aparecer.
 - **Ícone de sincronização (🔄)** (`id="syncBtn"`) — atalho de acesso rápido para a mesma ação de "Enviar dados deste aparelho para a nuvem" que existe dentro do modal ⚙ (ver seção 5.9); mostra o resultado num `alert()` (sucesso ou erro), em vez da linha de status usada dentro do modal.
-- **Ícone de engrenagem (⚙)** (`id="openSettingsBtn"`), ao lado do relógio: abre o modal de configuração de localização (ver seção 5.9). Não exibe nenhum campo de formulário diretamente na tela — só o ícone, sempre visível e discreto.
+- **Ícone de engrenagem (⚙)** (`id="openSettingsBtn"`), ao lado do relógio: abre o modal de configuração de horário/localização (ver seção 5.9). Não exibe nenhum campo de formulário diretamente na tela — só o ícone, sempre visível e discreto.
 
 ### 5.2 Painel "Sessões de mercado" (régua de killzone)
 - Título fixo: **"Sessões de mercado"** (sem cidade/estado/UTC — essa informação foi deliberadamente removida deste painel a pedido do usuário; só aparece no relógio do cabeçalho, seção 5.1).
@@ -356,20 +360,20 @@ Tabela + botão **"🖨️ Imprimir relatório do mês"** no cabeçalho do paine
   - Tabela completa das operações do mês: Data, Mercado, Par, Direção, Valor investido, Entrada/Stop/Saída, P&L, Saldo após.
 - Aciona a caixa de impressão nativa do navegador (equivalente nativo: gerar PDF via API do sistema operacional).
 
-### 5.9 Modal de configuração de localização (ícone ⚙) — **NOVO na v2**, **campo de fuso removido**
+### 5.9 Modal de configuração de horário/localização (ícone ⚙) — **NOVO na v2**
 
 Acionado pelo botão de engrenagem no cabeçalho (`id="openSettingsBtn"`). Fica **fechado por padrão** — não aparece a menos que o usuário clique no ícone.
 
 Estrutura do modal (`id="settingsOverlay"` → `.modal-box`):
-- Título: "Localização".
+- Título: "Horário e localização".
 - Botão de fechar (✕) no canto superior direito.
-- Texto explicativo: "Cidade, estado e país exibidos no relógio do cabeçalho."
-- Grid de 3 campos (2 colunas em telas largas, 1 coluna em telas estreitas):
+- Texto explicativo: "Usado para calcular corretamente as killzones de mercado no seu fuso horário."
+- Grid de 4 campos (2 colunas em telas largas, 1 coluna em telas estreitas):
   1. **Cidade** — texto livre, placeholder "Ex: Campo Grande".
   2. **Estado** — texto livre, placeholder "Ex: MS".
   3. **País** — texto livre, placeholder "Ex: Brasil".
-  4. ~~Fuso horário~~ — **removido** (não estava se comportando de forma confiável); ver seção 4.9.
-- Botões: **Cancelar** (fecha sem salvar, descartando qualquer edição feita) / **Salvar** (persiste em `location-config`, recalcula o relógio e a régua imediatamente, e fecha o modal — o `offset` salvo é preservado como estava, já que não há mais campo para editá-lo).
+  4. **Fuso horário** — select com todas as opções de UTC−12:00 a UTC+14:00 em passos de 30 minutos, rotulado como `UTC±HH:MM`.
+- Botões: **Cancelar** (fecha sem salvar, descartando qualquer edição feita) / **Salvar** (persiste em `location-config`, recalcula o relógio e a régua imediatamente, e fecha o modal).
 - Abaixo dos botões, separado por uma linha divisória, uma seção **"Sincronização"** (ver seção 3.1): texto de aviso + botão **"Enviar dados deste aparelho para a nuvem"** (`id="forcePushBtn"`), que sobrescreve o documento Firestore do usuário logado com os 4 valores atuais de `localStorage` deste aparelho, e uma linha de status abaixo (`id="forcePushStatus"`) mostrando "Enviando...", sucesso ou erro.
 
 Comportamentos obrigatórios:
@@ -544,9 +548,8 @@ Fórmula: R = movimento/risco; ganho = valor_de_entrada × R
 
 Campos do modal de configuração (⚙):
 ```
-Cidade | Estado | País
-Padrão: Campo Grande / MS / Brasil
-(offset de fuso horário — seção 4.9 — não é mais editável aqui; fica fixo em -4 salvo se já tiver sido outro valor antes)
+Cidade | Estado | País | Fuso horário (UTC-12:00 a UTC+14:00, passo 30min)
+Padrão: Campo Grande / MS / Brasil / UTC-4:00
 ```
 
 ---
@@ -573,15 +576,17 @@ Qualquer reimplementação nativa deve buscar cobertura equivalente antes de ser
 
 ## 12. Apêndice — Código-fonte completo e literal do protótipo (HTML/CSS/JS)
 
-Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em que este documento se baseia — na versão atual (v2), já com o design futurista, o adaptador de storage com fallback, o modal de configuração de localização, e o cálculo de killzone por aritmética de UTC. Use como referência de última instância para qualquer dúvida sobre comportamento, nome de campo, id de elemento ou fórmula — tudo o que está descrito nas seções anteriores foi extraído diretamente deste código, e este código passa integralmente pela suíte de 64 testes automatizados referenciada na seção 11.
+Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em que este documento se baseia — na versão atual (v2), já com o design futurista, o adaptador de storage com fallback, o modal de configuração de horário/localização, e o cálculo de killzone por aritmética de UTC. Use como referência de última instância para qualquer dúvida sobre comportamento, nome de campo, id de elemento ou fórmula — tudo o que está descrito nas seções anteriores foi extraído diretamente deste código, e este código passa integralmente pela suíte de 64 testes automatizados referenciada na seção 11.
 
 **O protótipo vive extraído em arquivos separados no diretório `prototype/`** (HTML + CSS + 13 módulos JS por responsabilidade), em vez de um único bloco monolítico. Os blocos abaixo são cópia literal, arquivo por arquivo, do conteúdo em `prototype/` — continuam sendo a fonte de última instância, só que organizados. A ordem das tags `<script>` de lógica de app no `index.html` é a mesma ordem de execução que o script único tinha antes da divisão, com `cloud.js` inserido logo após `storage.js` (ver seção 3.1); não reordene os módulos ao portar isso para outra plataforma sem reler a seção 4.8 (a chamada imediata de `updateSession()` dentro de `killzone.js` depende de rodar antes de `loadAll()`) e a seção 3.1 (`loadAll()` só é chamado pelo callback de autenticação em `cloud.js`, não mais diretamente em `init.js`).
 
 **PWA (instalável):** `manifest.json`, `icon.svg` e `sw.js` (service worker, cache-first com atualização em segundo plano) tornam o protótipo instalável como app (ícone, janela própria, uso offline) quando servido por **HTTPS ou `http://localhost`**. `js/register-sw.js` registra o service worker e é a última tag `<script>` do `index.html`. **Em `file://` o navegador não expõe `navigator.serviceWorker`, então o registro vira um no-op silencioso.** No iOS, a instalação é manual via Safari → Compartilhar → "Adicionar à Tela de Início".
 
-**Sincronização entre aparelhos (Firebase):** ver seção 3.1 para o modelo completo — login/cadastro por e-mail e senha, semeadura da nuvem no primeiro login de cada conta, troca de conta limpando o `localStorage` local (pra uma conta nova nunca herdar dados de outra), e dois pontos de acesso (modal ⚙ e ícone 🔄 no cabeçalho) para o reenvio manual forçado.
+**Sincronização entre aparelhos (Firebase):** ver seção 3.1 para o modelo completo — login/cadastro por e-mail e senha, semeadura da nuvem no primeiro login de cada conta, troca de conta limpando o `localStorage` local, e dois pontos de acesso (modal ⚙ e ícone 🔄 no cabeçalho) para o reenvio manual forçado.
 
 **Paleta (identidade "touro/urso"):** os tokens de cor em `styles.css` seguem a tabela da seção 6 — verde para alta/touro, vermelho para baixa/urso. Não reintroduza os valores antigos (violeta `#7B6CFF`/ciano `#35D6FF`).
+
+**Tabela de killzone atualizada:** ver seção 4.8 para a tabela completa (Pausa/Londres/Londres-NY/NY/Ásia-Tóquio/Pré Sydney) — substitui a tabela antiga (Ásia/Londres/NY AM/Fechamento Londres/NY PM), que não deve ser reintroduzida.
 
 ### `prototype/index.html`
 
@@ -622,7 +627,7 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
       <div class="session-badge mono" id="sessionBadge">Carregando...</div>
       <button class="btn sec" id="signOutBtn" style="padding:8px 12px;font-size:12px;">Sair</button>
       <button class="gear-btn" id="syncBtn" title="Enviar dados deste aparelho para a nuvem" aria-label="Sincronizar">🔄</button>
-      <button class="gear-btn" id="openSettingsBtn" title="Ajustar localização" aria-label="Ajustar localização">⚙</button>
+      <button class="gear-btn" id="openSettingsBtn" title="Ajustar horário e localização" aria-label="Ajustar horário e localização">⚙</button>
     </div>
   </header>
 
@@ -655,10 +660,10 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
   <div class="modal-overlay" id="settingsOverlay">
     <div class="modal-box">
       <div class="modal-head">
-        <h3>Localização</h3>
+        <h3>Horário e localização</h3>
         <button class="modal-close" id="closeSettingsBtn" aria-label="Fechar">✕</button>
       </div>
-      <p class="modal-desc">Cidade, estado e país exibidos no relógio do cabeçalho.</p>
+      <p class="modal-desc">Usado para calcular corretamente as killzones de mercado no seu fuso horário.</p>
       <div class="modal-grid">
         <div class="f">
           <label>Cidade</label>
@@ -671,6 +676,10 @@ Este é o código-fonte **exato**, sem cortes, do protótipo web funcional em qu
         <div class="f">
           <label>País</label>
           <input type="text" id="locCountry" placeholder="Ex: Brasil">
+        </div>
+        <div class="f">
+          <label>Fuso horário</label>
+          <select id="locOffset"></select>
         </div>
       </div>
       <div class="modal-actions">
@@ -1195,7 +1204,7 @@ footer{margin-top:26px;text-align:center;color:var(--dim);font-size:11px;letter-
 ```javascript
 'use strict';
 
-const CACHE = 'diario-de-trade-v3';
+const CACHE = 'diario-de-trade-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -1569,31 +1578,49 @@ async function saveFilter(){
 // ──────────────────────────────────────────────────────────────────────────────
 // SESSÃO / KILLZONES
 // ──────────────────────────────────────────────────────────────────────────────
-// As killzones (Ásia, Londres, NY AM, Fechamento Londres, NY PM) são sessões reais
-// de mercado, fixas em horário UTC. A tabela abaixo é a tabela original da
-// especificação (definida para Campo Grande, UTC-4) convertida para UTC puro:
-// isso permite recalcular corretamente os horários para QUALQUER fuso de
-// referência que o usuário configurar, sem perder a correspondência com as
-// sessões reais de mercado.
+// As killzones são sessões reais de mercado, fixas em horário UTC. A tabela
+// abaixo foi fornecida em horário local de Campo Grande (UTC-4):
+//   00:00–03:00 Pausa | 03:00–05:00 Londres | 05:00–08:00 Pausa
+//   08:00–12:00 Londres/NY | 12:00–18:00 NY | 17:00–19:00 Pausa
+//   19:00–22:00 Ásia/Tóquio | 22:00–00:00 Pré Sydney
+// (a faixa 17:00–19:00 "Pausa" propositalmente sobrepõe o fim de "NY", que
+// vale até 18:00 — a entrada listada por último vence para a hora 17 local)
+// — convertida aqui para UTC puro (+4h) para poder ser recalculada
+// corretamente para QUALQUER fuso de referência que o usuário configurar.
 const LOCATION_KEY = 'location-config';
 let locationConfig = { city:'Campo Grande', state:'MS', country:'Brasil', offset:-4 };
 
 function kzForUtcHour(h){
   h = ((h%24)+24)%24;
-  if(h>=23 || h<4)  return 'Ásia';
-  if(h<6)  return '';
+  if(h>=23 || h<2)  return 'Ásia/Tóquio';
+  if(h<4)  return 'Pré Sydney';
+  if(h<7)  return 'Pausa';
   if(h<9)  return 'Londres';
-  if(h<11) return '';
-  if(h<14) return 'NY AM';
-  if(h<16) return 'Fechamento Londres';
-  if(h<17) return '';
-  if(h<20) return 'NY PM';
-  return '';
+  if(h<12) return 'Pausa';
+  if(h<16) return 'Londres/NY';
+  if(h<21) return 'NY';
+  return 'Pausa';
 }
 // Converte hora local (no fuso de referência configurado) para a killzone correta.
 function kzForLocalHour(localHour, offset){
   const utcHour = ((Math.floor(localHour) - offset) % 24 + 24) % 24;
   return kzForUtcHour(utcHour);
+}
+
+// Gera as opções de fuso horário (UTC-12:00 a UTC+14:00, passo de 30min)
+function fmtOffset(o){
+  const sign = o>=0 ? '+' : '−';
+  const abs = Math.abs(o);
+  const h = Math.floor(abs);
+  const m = Math.round((abs-h)*60);
+  return `UTC${sign}${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+function buildOffsetSelect(){
+  const sel = document.getElementById('locOffset');
+  if(!sel) return;
+  const opts = [];
+  for(let m=-12*60; m<=14*60; m+=30){ opts.push(m/60); }
+  sel.innerHTML = opts.map(o=>`<option value="${o}">${fmtOffset(o)}</option>`).join('');
 }
 
 // Monta a régua de 24h dinamicamente: calcula a killzone de cada uma das 24 horas
@@ -1625,21 +1652,20 @@ async function loadLocation(){
   document.getElementById('locCity').value    = locationConfig.city    || '';
   document.getElementById('locState').value   = locationConfig.state  || '';
   document.getElementById('locCountry').value = locationConfig.country|| '';
+  buildOffsetSelect();
+  document.getElementById('locOffset').value  = locationConfig.offset;
   buildRail(locationConfig.offset);
 }
 async function saveLocation(){
   try{ await stSet(LOCATION_KEY, JSON.stringify(locationConfig)); }catch(e){ console.error(e); }
 }
 
-// Fuso horário (locationConfig.offset) não tem mais campo editável no modal —
-// mantém o valor já salvo (padrão -4, Campo Grande) inalterado; só
-// cidade/estado/país são editáveis aqui.
 document.getElementById('saveLocationBtn').addEventListener('click', async ()=>{
   locationConfig = {
     city:    document.getElementById('locCity').value.trim()    || 'Campo Grande',
     state:   document.getElementById('locState').value.trim(),
     country: document.getElementById('locCountry').value.trim(),
-    offset:  locationConfig.offset
+    offset:  parseFloat(document.getElementById('locOffset').value)
   };
   await saveLocation();
   buildRail(locationConfig.offset);
@@ -1654,6 +1680,7 @@ function openSettingsModal(){
   document.getElementById('locCity').value    = locationConfig.city    || '';
   document.getElementById('locState').value   = locationConfig.state  || '';
   document.getElementById('locCountry').value = locationConfig.country|| '';
+  document.getElementById('locOffset').value  = locationConfig.offset;
   document.getElementById('settingsOverlay').classList.add('open');
 }
 function closeSettingsModal(){

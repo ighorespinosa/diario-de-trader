@@ -34,7 +34,7 @@
       <div class="session-badge mono" id="sessionBadge">Carregando...</div>
       <button class="btn sec" id="signOutBtn" style="padding:8px 12px;font-size:12px;">Sair</button>
       <button class="gear-btn" id="syncBtn" title="Enviar dados deste aparelho para a nuvem" aria-label="Sincronizar">🔄</button>
-      <button class="gear-btn" id="openSettingsBtn" title="Ajustar localização" aria-label="Ajustar localização">⚙</button>
+      <button class="gear-btn" id="openSettingsBtn" title="Ajustar horário e localização" aria-label="Ajustar horário e localização">⚙</button>
     </div>
   </header>
 
@@ -67,10 +67,10 @@
   <div class="modal-overlay" id="settingsOverlay">
     <div class="modal-box">
       <div class="modal-head">
-        <h3>Localização</h3>
+        <h3>Horário e localização</h3>
         <button class="modal-close" id="closeSettingsBtn" aria-label="Fechar">✕</button>
       </div>
-      <p class="modal-desc">Cidade, estado e país exibidos no relógio do cabeçalho.</p>
+      <p class="modal-desc">Usado para calcular corretamente as killzones de mercado no seu fuso horário.</p>
       <div class="modal-grid">
         <div class="f">
           <label>Cidade</label>
@@ -83,6 +83,10 @@
         <div class="f">
           <label>País</label>
           <input type="text" id="locCountry" placeholder="Ex: Brasil">
+        </div>
+        <div class="f">
+          <label>Fuso horário</label>
+          <select id="locOffset"></select>
         </div>
       </div>
       <div class="modal-actions">
