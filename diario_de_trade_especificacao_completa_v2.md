@@ -285,12 +285,12 @@ A tabela foi fornecida em **horário local de Campo Grande (UTC−4)** e convert
 | 03:00 – 04:59 | 07:00 – 08:59 | Londres |
 | 05:00 – 07:59 | 09:00 – 11:59 | Pausa |
 | 08:00 – 11:59 | 12:00 – 15:59 | Londres/NY |
-| 12:00 – 16:59 | 16:00 – 20:59 | NY |
-| 17:00 – 18:59 | 21:00 – 22:59 | Pausa |
+| 12:00 – 17:59 | 16:00 – 21:59 | NY |
+| 18:00 – 18:59 | 22:00 – 22:59 | Pausa |
 | 19:00 – 21:59 | 23:00 – 01:59 | Ásia/Tóquio |
 | 22:00 – 23:59 | 02:00 – 03:59 | Pré Sydney |
 
-**Sobreposição intencional:** a faixa local `17:00–19:00 Pausa` foi fornecida se sobrepondo ao fim de `12:00–18:00 NY` (a hora 17 local pertence às duas, conforme especificado). A regra de resolução é **a entrada listada por último vence** — por isso a hora local 17 (UTC 21) é `Pausa`, não `NY`. Isso é refletido literalmente na cadeia de `if/else` de `kzForUtcHour()` (seção 12, `killzone.js`): cada `if` é checado em ordem, e a primeira faixa (em ordem UTC crescente) que bate com a hora vence — não há tentativa de "consertar" a sobreposição.
+Sem sobreposição: NY vai até as 17:59 local, e a Pausa seguinte é só 18:00–18:59.
 
 Para obter a killzone na hora **local de referência** (a que o usuário configurou), converte-se primeiro para UTC:
 ```
@@ -1204,7 +1204,7 @@ footer{margin-top:26px;text-align:center;color:var(--dim);font-size:11px;letter-
 ```javascript
 'use strict';
 
-const CACHE = 'diario-de-trade-v4';
+const CACHE = 'diario-de-trade-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -1579,12 +1579,10 @@ async function saveFilter(){
 // SESSÃO / KILLZONES
 // ──────────────────────────────────────────────────────────────────────────────
 // As killzones são sessões reais de mercado, fixas em horário UTC. A tabela
-// abaixo foi fornecida em horário local de Campo Grande (UTC-4):
+// abaixo foi fornecida em horário local de Campo Grande (UTC-4), sem sobreposição:
 //   00:00–03:00 Pausa | 03:00–05:00 Londres | 05:00–08:00 Pausa
-//   08:00–12:00 Londres/NY | 12:00–18:00 NY | 17:00–19:00 Pausa
+//   08:00–12:00 Londres/NY | 12:00–18:00 NY | 18:00–19:00 Pausa
 //   19:00–22:00 Ásia/Tóquio | 22:00–00:00 Pré Sydney
-// (a faixa 17:00–19:00 "Pausa" propositalmente sobrepõe o fim de "NY", que
-// vale até 18:00 — a entrada listada por último vence para a hora 17 local)
 // — convertida aqui para UTC puro (+4h) para poder ser recalculada
 // corretamente para QUALQUER fuso de referência que o usuário configurar.
 const LOCATION_KEY = 'location-config';
@@ -1598,7 +1596,7 @@ function kzForUtcHour(h){
   if(h<9)  return 'Londres';
   if(h<12) return 'Pausa';
   if(h<16) return 'Londres/NY';
-  if(h<21) return 'NY';
+  if(h<22) return 'NY';
   return 'Pausa';
 }
 // Converte hora local (no fuso de referência configurado) para a killzone correta.

@@ -4,12 +4,10 @@
 // SESSÃO / KILLZONES
 // ──────────────────────────────────────────────────────────────────────────────
 // As killzones são sessões reais de mercado, fixas em horário UTC. A tabela
-// abaixo foi fornecida em horário local de Campo Grande (UTC-4):
+// abaixo foi fornecida em horário local de Campo Grande (UTC-4), sem sobreposição:
 //   00:00–03:00 Pausa | 03:00–05:00 Londres | 05:00–08:00 Pausa
-//   08:00–12:00 Londres/NY | 12:00–18:00 NY | 17:00–19:00 Pausa
+//   08:00–12:00 Londres/NY | 12:00–18:00 NY | 18:00–19:00 Pausa
 //   19:00–22:00 Ásia/Tóquio | 22:00–00:00 Pré Sydney
-// (a faixa 17:00–19:00 "Pausa" propositalmente sobrepõe o fim de "NY", que
-// vale até 18:00 — a entrada listada por último vence para a hora 17 local)
 // — convertida aqui para UTC puro (+4h) para poder ser recalculada
 // corretamente para QUALQUER fuso de referência que o usuário configurar.
 const LOCATION_KEY = 'location-config';
@@ -23,7 +21,7 @@ function kzForUtcHour(h){
   if(h<9)  return 'Londres';
   if(h<12) return 'Pausa';
   if(h<16) return 'Londres/NY';
-  if(h<21) return 'NY';
+  if(h<22) return 'NY';
   return 'Pausa';
 }
 // Converte hora local (no fuso de referência configurado) para a killzone correta.
